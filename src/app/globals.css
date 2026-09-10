@@ -731,3 +731,87 @@ a {
     flex-direction: column;
   }
 }
+.requirement-mapping {
+  margin-bottom: 18px;
+  border-left: 4px solid #d97706;
+}
+.source-dates {
+  padding: 16px 20px;
+  background: #fff7ed;
+  color: #7c2d12;
+}
+.requirement-editor {
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+.requirement-editor fieldset,
+.requirement-edit {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+}
+.requirement-editor legend,
+.requirement-edit legend {
+  font-weight: 800;
+  padding: 0 8px;
+}
+.inline-fields {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 8px;
+}
+.review-check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-weight: 700;
+}
+.review-filter {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 0 10px;
+}
+.review-badge {
+  margin-left: 9px;
+}
+.review-notice {
+  margin-bottom: 18px;
+}
+.review-notice .button {
+  margin-top: 8px;
+}
+.requirement-table-card {
+  margin-top: 18px;
+}
+.requirement-actions {
+  display: grid;
+  gap: 5px;
+  color: #991b1b;
+  font-size: 0.82rem;
+}
+.requirement-history {
+  padding: 14px 20px;
+  border-top: 1px solid var(--line);
+}
+.requirement-history summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.history-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+}
+@media (max-width: 700px) {
+  .history-row {
+    grid-template-columns: 1fr;
+  }
+  .requirement-editor .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

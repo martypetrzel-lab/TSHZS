@@ -26,7 +26,11 @@ export type LegacyRequirement = {
   name: string;
   type: "INSPECTION" | "REVISION";
   intervalValue?: number;
-  intervalUnit?: "WEEKS" | "MONTHS";
+  intervalUnit?: "DAYS" | "WEEKS" | "MONTHS" | "YEARS";
+  lastCompletedAt?: string | null;
+  nextDueAt?: string | null;
+  needsReview?: boolean;
+  note?: string | null;
 };
 export type ParsedEquipmentRow = {
   sheetName: "Kontrola 1";
@@ -42,6 +46,8 @@ export type ParsedEquipmentRow = {
   protocolReference: string;
   warnings: string[];
   errors: string[];
+  needsReview: boolean;
+  requiresMapping: boolean;
   raw: Record<string, string | null>;
 };
 export type ParsedProtocolRow = {
@@ -270,9 +276,24 @@ export async function analyzeWorkbook(
     for (let number = 2; number <= main.rowCount; number++) {
       const row = main.getRow(number);
       const raw = rowObject(row, headers);
-      const uid = text(row.getCell(headers.get("UID")!).value);
-      const name = text(row.getCell(headers.get("Tech.prostředek")!).value);
-      if (!uid && !name) continue;
+      const originalUid = text(row.getCell(headers.get("UID")!).value);
+      const legacyId = cellText(row.getCell(headers.get("ID")!));
+      const originalName = text(
+        row.getCell(headers.get("Tech.prostředek")!).value,
+      );
+      if (!originalUid && !legacyId && !originalName) continue;
+      const uid =
+        originalUid ||
+        (legacyId
+          ? `LEGACY-${createHash("sha256").update(legacyId).digest("hex").slice(0, 10).toUpperCase()}`
+          : "");
+      const name =
+        originalName ||
+        (originalUid
+          ? `Neurčený prostředek – ${originalUid}`
+          : legacyId
+            ? `Neurčený prostředek – ID ${legacyId}`
+            : "");
       const parsed = parseRequirements(
         text(row.getCell(headers.get("Typ revize/Kontrola")!).value),
       );
@@ -283,6 +304,13 @@ export async function analyzeWorkbook(
       const dueRaw = row.getCell(headers.get("Datum příští kontroly")!).value;
       const lastCompletedAt = completed ? parseLegacyDate(controlRaw) : null;
       const nextDueAt = parseLegacyDate(dueRaw);
+      const requiresMapping =
+        (parsed.requirements.length > 1 &&
+          Boolean(lastCompletedAt || nextDueAt)) ||
+        parsed.requirements.some(
+          (requirement) =>
+            !requirement.intervalValue || !requirement.intervalUnit,
+        );
       const warnings = parsed.unknown.map(
         (item) => `Neznámý typ povinnosti: ${item}`,
       );
@@ -291,9 +319,26 @@ export async function analyzeWorkbook(
       ).toUpperCase();
       if (placement && !["PHA", "SCANIA", "TA", "STANICE"].includes(placement))
         warnings.push(`Neznámé vozidlo nebo umístění: ${placement}`);
+      if (!originalName && (originalUid || legacyId))
+        warnings.push(
+          "Původní evidence neobsahovala název prostředku. Název je potřeba doplnit po importu.",
+        );
+      if (!originalUid && legacyId)
+        warnings.push(
+          `UID chybělo; bylo vytvořeno stabilní importní UID ${uid}.`,
+        );
       if (parsed.requirements.length > 1 && (lastCompletedAt || nextDueAt))
         warnings.push(
           "Více povinností sdílí jeden termín; vyžaduje kontrolu mapování.",
+        );
+      if (
+        parsed.requirements.some(
+          (requirement) =>
+            !requirement.intervalValue || !requirement.intervalUnit,
+        )
+      )
+        warnings.push(
+          "Interval povinnosti není ve staré evidenci určen; vyžaduje mapování nebo doplnění později.",
         );
       if (
         !completed &&
@@ -305,8 +350,9 @@ export async function analyzeWorkbook(
           warnings.push("Vyžaduje kontrolu mapování termínu revize.");
       }
       const rowErrors = [
-        ...(!uid ? ["Chybí UID."] : []),
-        ...(!name ? ["Chybí název prostředku."] : []),
+        ...(!originalUid && !legacyId
+          ? ["Chybí UID i původní ID; prostředek nelze bezpečně identifikovat."]
+          : []),
         ...(parsed.requirements.length === 0
           ? ["Není rozpoznána žádná povinnost."]
           : []),
@@ -315,16 +361,26 @@ export async function analyzeWorkbook(
         sheetName: REQUIRED_SHEET,
         rowNumber: number,
         uid,
-        legacyId: cellText(row.getCell(headers.get("ID")!)),
+        legacyId,
         name,
         vehicle: text(row.getCell(headers.get("Vůz")!).value),
-        requirements: parsed.requirements,
+        requirements: parsed.requirements.map((requirement) => ({
+          ...requirement,
+          lastCompletedAt: requiresMapping ? null : lastCompletedAt,
+          nextDueAt: requiresMapping ? null : nextDueAt,
+          needsReview: requiresMapping,
+          note: requiresMapping
+            ? "Termín nebo interval ze staré evidence vyžaduje ruční mapování."
+            : null,
+        })),
         completed,
         lastCompletedAt,
         nextDueAt,
         protocolReference: text(row.getCell(headers.get("PROTOKOL")!).value),
         warnings,
         errors: rowErrors,
+        needsReview: !originalName,
+        requiresMapping,
         raw,
       });
     }

@@ -275,6 +275,7 @@ model EquipmentItem {
   legacyProtocolReference String?
   importedAt              DateTime?
   importJobId             String?
+  needsReview             Boolean                    @default(false)
   manufacturedAt          DateTime?
   manufacturedYear        Int?
   acquiredAt              DateTime?
@@ -311,6 +312,7 @@ model EquipmentItem {
   @@index([serialNumber])
   @@index([legacyId])
   @@index([importJobId])
+  @@index([needsReview])
 }
 
 model EquipmentStatusHistory {
@@ -352,18 +354,19 @@ model SourceDocument {
 }
 
 model Rule {
-  id               String             @id @default(cuid())
-  seedKey          String?            @unique
-  name             String
-  requirementType  RequirementType
-  sourceType       RuleSourceType
-  sourceDocumentId String?
-  categoryId       String?
-  equipmentId      String?
-  active           Boolean            @default(true)
-  sourceDocument   SourceDocument?    @relation(fields: [sourceDocumentId], references: [id])
-  category         EquipmentCategory? @relation(fields: [categoryId], references: [id])
-  versions         RuleVersion[]
+  id                 String                 @id @default(cuid())
+  seedKey            String?                @unique
+  name               String
+  requirementType    RequirementType
+  sourceType         RuleSourceType
+  sourceDocumentId   String?
+  categoryId         String?
+  equipmentId        String?
+  active             Boolean                @default(true)
+  sourceDocument     SourceDocument?        @relation(fields: [sourceDocumentId], references: [id])
+  category           EquipmentCategory?     @relation(fields: [categoryId], references: [id])
+  versions           RuleVersion[]
+  directRequirements EquipmentRequirement[] @relation("RequirementSourceRule")
 
   @@index([categoryId, active])
 }
@@ -399,20 +402,47 @@ model RuleVersion {
 }
 
 model EquipmentRequirement {
-  id               String           @id @default(cuid())
+  id               String                        @id @default(cuid())
   equipmentId      String
   ruleVersionId    String?
   type             RequirementType
   name             String
+  intervalValue    Int?
+  intervalUnit     IntervalUnit?
   lastCompletedAt  DateTime?
   nextDueAt        DateTime?
-  status           ComplianceStatus @default(UNDEFINED)
-  manuallyResolved Boolean          @default(false)
+  status           ComplianceStatus              @default(UNDEFINED)
+  source           String?
+  sourceType       RuleSourceType?
+  sourceRuleId     String?
+  note             String?
+  needsReview      Boolean                       @default(false)
+  manuallyResolved Boolean                       @default(false)
   resolutionReason String?
-  equipment        EquipmentItem    @relation(fields: [equipmentId], references: [id])
-  ruleVersion      RuleVersion?     @relation(fields: [ruleVersionId], references: [id])
+  equipment        EquipmentItem                 @relation(fields: [equipmentId], references: [id])
+  ruleVersion      RuleVersion?                  @relation(fields: [ruleVersionId], references: [id])
+  sourceRule       Rule?                         @relation("RequirementSourceRule", fields: [sourceRuleId], references: [id])
+  history          EquipmentRequirementHistory[]
 
   @@index([equipmentId, nextDueAt])
+  @@index([sourceRuleId])
+}
+
+model EquipmentRequirementHistory {
+  id              String               @id @default(cuid())
+  requirementId   String
+  requirement     EquipmentRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  lastCompletedAt DateTime?
+  nextDueAt       DateTime?
+  intervalValue   Int?
+  intervalUnit    IntervalUnit?
+  status          ComplianceStatus
+  note            String?
+  source          String?
+  recordedById    String?
+  recordedAt      DateTime             @default(now())
+
+  @@index([requirementId, recordedAt])
 }
 
 model ChecklistTemplate {

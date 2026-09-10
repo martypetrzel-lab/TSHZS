@@ -82,6 +82,34 @@ async function fixture() {
     "STANICE",
     "",
   ]);
+  main.addRow([
+    "UID-5",
+    "000077",
+    "",
+    "Roční",
+    null,
+    "",
+    "NE",
+    null,
+    0,
+    "NE",
+    "PHA",
+    "",
+  ]);
+  main.addRow([
+    "",
+    "A218071",
+    "",
+    "REVIZE",
+    null,
+    "",
+    "NE",
+    new Date("2028-08-15T00:00:00Z"),
+    0,
+    "NE",
+    "STANICE",
+    "",
+  ]);
   book.addWorksheet("Protokol").addRow(["Vizuální kontrola"]);
   book.addWorksheet("Karta Prostředku");
   const history = book.addWorksheet("Historie protokolů");
@@ -154,10 +182,10 @@ describe("legacy XLSX", () => {
       mime,
       await fixture(),
     );
-    expect(analysis.equipment).toHaveLength(4);
+    expect(analysis.equipment).toHaveLength(6);
     expect(analysis.equipment[0].legacyId).toBe("00123");
     expect(analysis.equipment[1].legacyId).toBe("zone 2 A211089");
-    expect(analysis.equipment.map((r) => r.vehicle)).toEqual([
+    expect(analysis.equipment.slice(0, 4).map((r) => r.vehicle)).toEqual([
       "PHA",
       "SCANIA",
       "TA",
@@ -166,6 +194,18 @@ describe("legacy XLSX", () => {
     expect(analysis.equipment[1].warnings.join(" ")).toContain(
       "Více povinností",
     );
+    expect(
+      analysis.equipment[1].requirements.every(
+        (requirement) => requirement.nextDueAt === null,
+      ),
+    ).toBe(true);
+    expect(analysis.equipment[4]).toMatchObject({
+      name: "Neurčený prostředek – UID-5",
+      needsReview: true,
+      errors: [],
+    });
+    expect(analysis.equipment[5].name).toBe("Neurčený prostředek – ID A218071");
+    expect(analysis.equipment[5].uid).toMatch(/^LEGACY-/);
     expect(analysis.protocols[0].number).toBe("PROT-1");
     expect(analysis.protocols[0].externalUrl).toContain("drive.google.com");
     expect(analysis.hasLegacyChecklist).toBe(true);

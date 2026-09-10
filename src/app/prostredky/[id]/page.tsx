@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import {
   AlertTriangle,
   ClipboardCheck,
@@ -39,6 +40,7 @@ export default async function EquipmentDetail({
           ruleVersion: {
             include: { rule: { include: { sourceDocument: true } } },
           },
+          history: { orderBy: { recordedAt: "desc" } },
         },
         orderBy: { nextDueAt: "asc" },
       },
@@ -51,6 +53,7 @@ export default async function EquipmentDetail({
   if (!item) notFound();
   const blocked = item.complianceStatus === "OVERDUE_BLOCKED";
   const next = item.requirements[0];
+  const today = new Date();
   return (
     <AppShell userName={user.displayName}>
       <div className="content">
@@ -92,6 +95,18 @@ export default async function EquipmentDetail({
             </strong>
           </div>
         </section>
+        {item.needsReview && (
+          <div className="reason review-notice">
+            <strong>Vyžaduje doplnění</strong>
+            <p>
+              U tohoto prostředku chyběl v původní evidenci název nebo jiný
+              důležitý údaj. Doplňte prosím správné údaje.
+            </p>
+            <Link className="button" href={`/prostredky/${item.id}/upravit`}>
+              Doplnit údaje
+            </Link>
+          </div>
+        )}
         {blocked && next && (
           <div className="reason">
             <strong>
@@ -178,6 +193,145 @@ export default async function EquipmentDetail({
               )}
             </div>
           </div>
+        </section>
+        <section className="card requirement-table-card">
+          <div className="panel-head">
+            <h2>POVINNOSTI A TERMÍNY</h2>
+          </div>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Typ</th>
+                  <th>Interval</th>
+                  <th>Poslední</th>
+                  <th>Další termín</th>
+                  <th>Zbývá</th>
+                  <th>Stav</th>
+                  <th>Zdroj</th>
+                  <th>Akce</th>
+                </tr>
+              </thead>
+              <tbody>
+                {item.requirements.map((requirement) => {
+                  const remaining = requirement.nextDueAt
+                    ? Math.ceil(
+                        (requirement.nextDueAt.getTime() - today.getTime()) /
+                          86_400_000,
+                      )
+                    : null;
+                  const unit = {
+                    DAYS: "dní",
+                    WEEKS: "týdnů",
+                    MONTHS: "měsíců",
+                    YEARS: "let",
+                  }[requirement.intervalUnit ?? "DAYS"];
+                  return (
+                    <tr key={requirement.id}>
+                      <td>
+                        {requirement.type === "REVISION"
+                          ? "Revize"
+                          : requirement.type === "INSPECTION"
+                            ? "Pravidelná kontrola"
+                            : requirement.name}
+                      </td>
+                      <td>
+                        {requirement.intervalValue
+                          ? `${requirement.intervalValue} ${unit}`
+                          : "—"}
+                      </td>
+                      <td>
+                        {requirement.lastCompletedAt?.toLocaleDateString(
+                          "cs-CZ",
+                        ) ?? "—"}
+                      </td>
+                      <td>
+                        {requirement.nextDueAt?.toLocaleDateString("cs-CZ") ??
+                          "—"}
+                      </td>
+                      <td>
+                        {remaining === null
+                          ? "—"
+                          : remaining < 0
+                            ? `${Math.abs(remaining)} dní po termínu`
+                            : `${remaining} dní`}
+                      </td>
+                      <td>
+                        <span
+                          className={`badge ${remaining !== null && remaining < 0 ? "danger" : remaining !== null && remaining <= 30 ? "warn" : ""}`}
+                        >
+                          {remaining === null
+                            ? "Nedefinováno"
+                            : remaining < 0
+                              ? "Po termínu"
+                              : remaining <= 30
+                                ? "Blíží se"
+                                : "Platná"}
+                        </span>
+                      </td>
+                      <td>
+                        {requirement.source ??
+                          requirement.ruleVersion?.rule.sourceDocument?.title ??
+                          "—"}
+                      </td>
+                      <td>
+                        <div className="requirement-actions">
+                          <Link
+                            href={`${requirement.type === "REVISION" ? "/revize" : "/kontroly"}?equipmentId=${item.id}&requirementId=${requirement.id}`}
+                          >
+                            {requirement.type === "REVISION"
+                              ? "Zadat revizi"
+                              : "Provést kontrolu"}
+                          </Link>
+                          <Link
+                            href={`/prostredky/${item.id}/upravit#povinnosti`}
+                          >
+                            Upravit termín
+                          </Link>
+                          <a href={`#historie-${requirement.id}`}>
+                            Zobrazit historii
+                          </a>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {!item.requirements.length && (
+              <div className="empty-state">
+                Nejsou evidovány žádné povinnosti.
+              </div>
+            )}
+          </div>
+          {item.requirements.map((requirement) => (
+            <details
+              id={`historie-${requirement.id}`}
+              className="requirement-history"
+              key={`history-${requirement.id}`}
+            >
+              <summary>Historie: {requirement.name}</summary>
+              {requirement.history.length ? (
+                requirement.history.map((entry) => (
+                  <div className="history-row" key={entry.id}>
+                    <span>{entry.recordedAt.toLocaleDateString("cs-CZ")}</span>
+                    <span>
+                      Poslední:{" "}
+                      {entry.lastCompletedAt?.toLocaleDateString("cs-CZ") ??
+                        "—"}
+                    </span>
+                    <span>
+                      Další:{" "}
+                      {entry.nextDueAt?.toLocaleDateString("cs-CZ") ?? "—"}
+                    </span>
+                    <span>{entry.note ?? "Změna povinnosti"}</span>
+                  </div>
+                ))
+              ) : (
+                <p className="muted">Historie zatím neobsahuje záznamy.</p>
+              )}
+            </details>
+          ))}
         </section>
         <section className="dashboard-grid">
           <div className="card">

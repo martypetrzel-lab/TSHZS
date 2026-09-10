@@ -203,6 +203,72 @@ export async function runDryImport(formData: FormData) {
     include: { rows: true },
   });
   if (!job) redirect("/administrace/import?chyba=Import%20neexistuje.");
+  const updates = job.rows
+    .filter((row) => row.sheetName === "Kontrola 1")
+    .map(async (importRow) => {
+      const preview = importRow.previewData as unknown as ParsedEquipmentRow;
+      if (!preview.requiresMapping) return;
+      const requirements = preview.requirements.map((requirement) => {
+        const prefix = `requirement-${importRow.id}-${requirement.key}`;
+        const lastChoice = String(
+          formData.get(`${prefix}-lastChoice`) ?? "unknown",
+        );
+        const nextChoice = String(
+          formData.get(`${prefix}-nextChoice`) ?? "unknown",
+        );
+        const manualLast = String(formData.get(`${prefix}-manualLast`) ?? "");
+        const manualNext = String(formData.get(`${prefix}-manualNext`) ?? "");
+        const intervalValueRaw = String(
+          formData.get(`${prefix}-intervalValue`) ?? "",
+        );
+        const intervalUnit = String(
+          formData.get(`${prefix}-intervalUnit`) ?? "",
+        ) as "DAYS" | "WEEKS" | "MONTHS" | "YEARS";
+        const dateOnly = (value: string) =>
+          /^\d{4}-\d{2}-\d{2}$/.test(value)
+            ? new Date(`${value}T12:00:00.000Z`).toISOString()
+            : null;
+        const intervalValue = intervalValueRaw
+          ? Number(intervalValueRaw)
+          : undefined;
+        return {
+          ...requirement,
+          lastCompletedAt:
+            lastChoice === "source"
+              ? preview.lastCompletedAt
+              : lastChoice === "manual"
+                ? dateOnly(manualLast)
+                : null,
+          nextDueAt:
+            nextChoice === "source"
+              ? preview.nextDueAt
+              : nextChoice === "manual"
+                ? dateOnly(manualNext)
+                : null,
+          intervalValue:
+            Number.isInteger(intervalValue) && Number(intervalValue) > 0
+              ? intervalValue
+              : undefined,
+          intervalUnit: ["DAYS", "WEEKS", "MONTHS", "YEARS"].includes(
+            intervalUnit,
+          )
+            ? intervalUnit
+            : undefined,
+          needsReview: formData.get(`${prefix}-later`) === "on",
+          note:
+            formData.get(`${prefix}-later`) === "on"
+              ? "Termín nebo interval bude doplněn později."
+              : null,
+        };
+      });
+      await prisma.importRow.update({
+        where: { id: importRow.id },
+        data: {
+          previewData: { ...preview, requirements, requiresMapping: false },
+        },
+      });
+    });
+  await Promise.all(updates);
   const hasErrors = job.rows.some((row) => row.status === "ERROR");
   await prisma.importJob.update({
     where: { id: job.id },
@@ -267,7 +333,7 @@ async function ensureMasterData(organizationId: string) {
       sourceType: "LEGACY_IMPORT",
     },
   });
-  const versions = new Map<string, string>();
+  const versions = new Map<string, { versionId: string; ruleId: string }>();
   for (const spec of [
     {
       key: "annual",
@@ -321,7 +387,7 @@ async function ensureMasterData(organizationId: string) {
         note: "Převzato ze staré provozní evidence; nejde o oficiální právní pravidlo.",
       },
     });
-    versions.set(spec.key, version.id);
+    versions.set(spec.key, { versionId: version.id, ruleId: rule.id });
   }
   const template = await prisma.checklistTemplate.upsert({
     where: { seedKey: "checklist:legacy-general" },
@@ -445,12 +511,14 @@ export async function executeImport(formData: FormData) {
                   importedAt: new Date(),
                   importJobId: job.id,
                   status: "IN_STOCK",
-                  complianceStatus: statusForDue(row.nextDueAt),
+                  complianceStatus: "UNDEFINED",
+                  needsReview: row.needsReview,
                   createdById: user.id,
                 },
               });
           for (const requirement of row.requirements) {
-            const ruleVersionId = master.versions.get(requirement.key)!;
+            const legacyRule = master.versions.get(requirement.key)!;
+            const ruleVersionId = legacyRule.versionId;
             const found = await tx.equipmentRequirement.findFirst({
               where: { equipmentId: item.id, ruleVersionId },
             });
@@ -461,16 +529,61 @@ export async function executeImport(formData: FormData) {
                   ruleVersionId,
                   type: requirement.type,
                   name: requirement.name,
-                  lastCompletedAt: row.lastCompletedAt
-                    ? new Date(row.lastCompletedAt)
+                  intervalValue: requirement.intervalValue,
+                  intervalUnit: requirement.intervalUnit,
+                  lastCompletedAt: requirement.lastCompletedAt
+                    ? new Date(requirement.lastCompletedAt)
                     : null,
-                  nextDueAt: row.nextDueAt ? new Date(row.nextDueAt) : null,
-                  status: statusForDue(row.nextDueAt),
+                  nextDueAt: requirement.nextDueAt
+                    ? new Date(requirement.nextDueAt)
+                    : null,
+                  status: statusForDue(requirement.nextDueAt ?? null),
+                  source: "Importovaná původní evidence",
+                  sourceType: "LEGACY_IMPORT",
+                  sourceRuleId: legacyRule.ruleId,
+                  note: requirement.note,
+                  needsReview: requirement.needsReview ?? false,
+                  history: {
+                    create: {
+                      lastCompletedAt: requirement.lastCompletedAt
+                        ? new Date(requirement.lastCompletedAt)
+                        : null,
+                      nextDueAt: requirement.nextDueAt
+                        ? new Date(requirement.nextDueAt)
+                        : null,
+                      intervalValue: requirement.intervalValue,
+                      intervalUnit: requirement.intervalUnit,
+                      status: statusForDue(requirement.nextDueAt ?? null),
+                      source: "Importovaná původní evidence",
+                      note: "Výchozí stav vytvořený importem.",
+                      recordedById: user.id,
+                    },
+                  },
                 },
               });
               requirements++;
             }
           }
+          const statuses = row.requirements.map((requirement) =>
+            statusForDue(requirement.nextDueAt ?? null),
+          );
+          const complianceStatus = statuses.includes("OVERDUE_BLOCKED")
+            ? "OVERDUE_BLOCKED"
+            : statuses.includes("DUE_SOON")
+              ? "DUE_SOON"
+              : statuses.includes("COMPLIANT")
+                ? "COMPLIANT"
+                : "UNDEFINED";
+          await tx.equipmentItem.update({
+            where: { id: item.id },
+            data: {
+              complianceStatus,
+              needsReview:
+                item.needsReview ||
+                row.needsReview ||
+                row.requirements.some((requirement) => requirement.needsReview),
+            },
+          });
           return { item, existed: Boolean(existing) };
         });
         if (result.existed) updated++;

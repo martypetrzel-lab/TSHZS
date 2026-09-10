@@ -25,6 +25,7 @@ type Query = {
   status?: string;
   requirementType?: string;
   term?: string;
+  review?: string;
   sort?: string;
   page?: string;
 };
@@ -65,6 +66,7 @@ export default async function Page({
     ...(q.term === "30"
       ? { requirements: { some: { nextDueAt: { gte: now, lte: in30 } } } }
       : {}),
+    ...(q.review === "1" ? { needsReview: true } : {}),
   };
   const orderBy: Prisma.EquipmentItemOrderByWithRelationInput =
     q.sort === "name"
@@ -163,6 +165,15 @@ export default async function Page({
             <option value="name">Název</option>
             <option value="uid">UID</option>
           </select>
+          <label className="review-filter">
+            <input
+              type="checkbox"
+              name="review"
+              value="1"
+              defaultChecked={q.review === "1"}
+            />{" "}
+            Vyžaduje doplnění
+          </label>
           <button className="button">Použít filtry</button>
         </form>
         <div className="card table-wrap">
@@ -183,6 +194,11 @@ export default async function Page({
                 <tr key={i.id}>
                   <td>
                     <Link href={`/prostredky/${i.id}`}>{i.name}</Link>
+                    {i.needsReview && (
+                      <span className="badge warn review-badge">
+                        Vyžaduje doplnění
+                      </span>
+                    )}
                   </td>
                   <td>{i.uid}</td>
                   <td>{i.legacyId ?? "—"}</td>

@@ -1,5 +1,69 @@
-import { describe,expect,it } from "vitest";
-import { addCalendarInterval,evaluateRules } from "./rule-engine";
-const base=new Date("2026-01-15T10:00:00Z");
-const rule=(id:string,months:number,validFrom=new Date("2020-01-01"),validTo:null|Date=null)=>({id,name:id,validFrom,validTo,intervalValue:months,intervalUnit:"MONTHS" as const});
-describe("rule engine",()=>{it("vybere 6 měsíců proti 12",()=>expect(evaluateRules([rule("12m",12),rule("6m",6)],base,base).decisive?.id).toBe("6m"));it("vybere 3 měsíce proti 6",()=>expect(evaluateRules([rule("6m",6),rule("3m",3)],base,base).decisive?.id).toBe("3m"));it("ignoruje budoucí pravidlo",()=>expect(evaluateRules([rule("future",1,new Date("2027-01-01")),rule("active",6)],base,base).decisive?.id).toBe("active"));it("ignoruje expirované pravidlo",()=>expect(evaluateRules([rule("old",1,new Date("2020-01-01"),new Date("2025-01-01")),rule("active",6)],base,base).decisive?.id).toBe("active"));it("počítá kalendářní měsíce",()=>expect(addCalendarInterval(new Date("2024-01-31T00:00:00Z"),1,"MONTHS").toISOString().slice(0,10)).toBe("2024-02-29"));it("počítá přestupný rok",()=>expect(addCalendarInterval(new Date("2024-02-29T00:00:00Z"),1,"YEARS").toISOString().slice(0,10)).toBe("2025-02-28"))});
+import { describe, expect, it } from "vitest";
+import { addCalendarInterval, evaluateRules } from "./rule-engine";
+const base = new Date("2026-01-15T10:00:00Z");
+const rule = (
+  id: string,
+  months: number,
+  validFrom = new Date("2020-01-01"),
+  validTo: null | Date = null,
+) => ({
+  id,
+  name: id,
+  validFrom,
+  validTo,
+  intervalValue: months,
+  intervalUnit: "MONTHS" as const,
+});
+describe("rule engine", () => {
+  it("vybere 6 měsíců proti 12", () =>
+    expect(
+      evaluateRules([rule("12m", 12), rule("6m", 6)], base, base).decisive?.id,
+    ).toBe("6m"));
+  it("vybere 3 měsíce proti 6", () =>
+    expect(
+      evaluateRules([rule("6m", 6), rule("3m", 3)], base, base).decisive?.id,
+    ).toBe("3m"));
+  it("ignoruje budoucí pravidlo", () =>
+    expect(
+      evaluateRules(
+        [rule("future", 1, new Date("2027-01-01")), rule("active", 6)],
+        base,
+        base,
+      ).decisive?.id,
+    ).toBe("active"));
+  it("ignoruje expirované pravidlo", () =>
+    expect(
+      evaluateRules(
+        [
+          rule("old", 1, new Date("2020-01-01"), new Date("2025-01-01")),
+          rule("active", 6),
+        ],
+        base,
+        base,
+      ).decisive?.id,
+    ).toBe("active"));
+  it("počítá kalendářní měsíce", () =>
+    expect(
+      addCalendarInterval(new Date("2024-01-31T00:00:00Z"), 1, "MONTHS")
+        .toISOString()
+        .slice(0, 10),
+    ).toBe("2024-02-29"));
+  it("počítá přestupný rok", () =>
+    expect(
+      addCalendarInterval(new Date("2024-02-29T00:00:00Z"), 1, "YEARS")
+        .toISOString()
+        .slice(0, 10),
+    ).toBe("2025-02-28"));
+  it("podporuje kalendářní dny a týdny", () => {
+    expect(
+      addCalendarInterval(new Date("2026-04-10T00:00:00Z"), 3, "DAYS")
+        .toISOString()
+        .slice(0, 10),
+    ).toBe("2026-04-13");
+    expect(
+      addCalendarInterval(new Date("2026-04-10T00:00:00Z"), 2, "WEEKS")
+        .toISOString()
+        .slice(0, 10),
+    ).toBe("2026-04-24");
+  });
+});
