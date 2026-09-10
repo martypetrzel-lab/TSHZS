@@ -1,0 +1,558 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EquipmentStatus {
+  IN_SERVICE
+  OUT_OF_SERVICE
+  IN_REPAIR
+  AWAITING_INSPECTION
+  AWAITING_REVISION
+  LOANED
+  IN_STOCK
+  RETIRED
+  LOST
+}
+
+enum ComplianceStatus {
+  COMPLIANT
+  WARNING
+  DUE_SOON
+  OVERDUE_BLOCKED
+  UNDEFINED
+}
+
+enum EvidenceMode {
+  INDIVIDUAL
+  QUANTITY
+}
+
+enum RequirementType {
+  INSPECTION
+  REVISION
+  CALIBRATION
+  VERIFICATION
+  LIFETIME
+  EXPIRATION
+}
+
+enum RuleSourceType {
+  LEGAL_REGULATION
+  TECHNICAL_SERVICE_ORDER
+  MANUFACTURER
+  INTERNAL_CEPRO
+  LOCAL_MSTETICE
+  INDIVIDUAL
+}
+
+enum IntervalUnit {
+  DAYS
+  WEEKS
+  MONTHS
+  YEARS
+}
+
+enum InspectionLevel {
+  USER
+  PROFESSIONAL
+}
+
+enum InspectionResult {
+  PASSED
+  FAILED
+  PASSED_WITH_LIMITATION
+}
+
+enum InspectionState {
+  DRAFT
+  CLOSED
+  CANCELLED
+  CORRECTED
+}
+
+enum DefectSeverity {
+  MINOR
+  SIGNIFICANT
+  CRITICAL
+}
+
+enum ServiceCaseStatus {
+  NEW
+  ASSESSED
+  OUT_OF_SERVICE
+  WAITING_FOR_REPAIR
+  IN_REPAIR
+  REPAIRED
+  POST_REPAIR_INSPECTION
+  CLOSED
+}
+
+enum TaskPriority {
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+model Organization {
+  id        String          @id @default(cuid())
+  name      String          @unique
+  stations  Station[]
+  users     User[]
+  equipment EquipmentItem[]
+  createdAt DateTime        @default(now())
+}
+
+model Station {
+  id             String          @id @default(cuid())
+  name           String
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  locations      Location[]
+  vehicles       Vehicle[]
+  equipment      EquipmentItem[]
+
+  @@unique([organizationId, name])
+}
+
+model Location {
+  id         String          @id @default(cuid())
+  name       String
+  stationId  String
+  parentId   String?
+  station    Station         @relation(fields: [stationId], references: [id])
+  parent     Location?       @relation("LocationTree", fields: [parentId], references: [id])
+  children   Location[]      @relation("LocationTree")
+  equipment  EquipmentItem[]
+  archivedAt DateTime?
+
+  @@index([stationId, parentId])
+}
+
+model Vehicle {
+  id                String          @id @default(cuid())
+  name              String
+  callSign          String?
+  registrationPlate String?
+  stationId         String
+  station           Station         @relation(fields: [stationId], references: [id])
+  equipment         EquipmentItem[]
+  archivedAt        DateTime?
+}
+
+model User {
+  id             String              @id @default(cuid())
+  username       String              @unique
+  displayName    String
+  passwordHash   String
+  active         Boolean             @default(true)
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id])
+  roles          UserRole[]
+  sessions       Session[]
+  qualifications UserQualification[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  code        String           @unique
+  name        String
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id    String           @id @default(cuid())
+  code  String           @unique
+  name  String
+  roles RolePermission[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model Qualification {
+  id    String              @id @default(cuid())
+  code  String              @unique
+  name  String
+  users UserQualification[]
+}
+
+model UserQualification {
+  userId          String
+  qualificationId String
+  validUntil      DateTime?
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  qualification   Qualification @relation(fields: [qualificationId], references: [id])
+
+  @@id([userId, qualificationId])
+}
+
+model EquipmentCategory {
+  id                         String              @id @default(cuid())
+  code                       String              @unique
+  name                       String
+  parentId                   String?
+  parent                     EquipmentCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children                   EquipmentCategory[] @relation("CategoryTree")
+  items                      EquipmentItem[]
+  rules                      Rule[]
+  individualEvidenceRequired Boolean             @default(false)
+  archivedAt                 DateTime?
+}
+
+model EquipmentItem {
+  id                     String                     @id @default(cuid())
+  uid                    String                     @unique
+  name                   String
+  evidenceMode           EvidenceMode               @default(INDIVIDUAL)
+  quantity               Int                        @default(1)
+  minimumQuantity        Int?
+  categoryId             String
+  organizationId         String
+  stationId              String
+  locationId             String?
+  vehicleId              String?
+  manufacturer           String?
+  model                  String?
+  typeName               String?
+  serialNumber           String?
+  registrationNumber     String?
+  internalId             String?
+  manufacturedAt         DateTime?
+  manufacturedYear       Int?
+  acquiredAt             DateTime?
+  registeredAt           DateTime                   @default(now())
+  warrantyUntil          DateTime?
+  declaredLifetimeMonths Int?
+  lifetimeUntil          DateTime?
+  purchasePrice          Decimal?                   @db.Decimal(12, 2)
+  supplier               String?
+  status                 EquipmentStatus            @default(IN_STOCK)
+  complianceStatus       ComplianceStatus           @default(UNDEFINED)
+  note                   String?
+  parentSetId            String?
+  category               EquipmentCategory          @relation(fields: [categoryId], references: [id])
+  organization           Organization               @relation(fields: [organizationId], references: [id])
+  station                Station                    @relation(fields: [stationId], references: [id])
+  location               Location?                  @relation(fields: [locationId], references: [id])
+  vehicle                Vehicle?                   @relation(fields: [vehicleId], references: [id])
+  parentSet              EquipmentItem?             @relation("EquipmentSet", fields: [parentSetId], references: [id])
+  components             EquipmentItem[]            @relation("EquipmentSet")
+  requirements           EquipmentRequirement[]
+  statusHistory          EquipmentStatusHistory[]
+  locationHistory        EquipmentLocationHistory[]
+  inspections            Inspection[]
+  defects                Defect[]
+  createdById            String?
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+  archivedAt             DateTime?
+
+  @@index([stationId, status])
+  @@index([categoryId])
+  @@index([serialNumber])
+}
+
+model EquipmentStatusHistory {
+  id          String           @id @default(cuid())
+  equipmentId String
+  fromStatus  EquipmentStatus?
+  toStatus    EquipmentStatus
+  reason      String
+  changedById String
+  changedAt   DateTime         @default(now())
+  equipment   EquipmentItem    @relation(fields: [equipmentId], references: [id])
+
+  @@index([equipmentId, changedAt])
+}
+
+model EquipmentLocationHistory {
+  id             String        @id @default(cuid())
+  equipmentId    String
+  fromLocationId String?
+  toLocationId   String?
+  fromVehicleId  String?
+  toVehicleId    String?
+  reason         String?
+  changedById    String
+  changedAt      DateTime      @default(now())
+  equipment      EquipmentItem @relation(fields: [equipmentId], references: [id])
+}
+
+model SourceDocument {
+  id             String         @id @default(cuid())
+  title          String
+  documentNumber String?
+  sourceType     RuleSourceType
+  effectiveFrom  DateTime?
+  effectiveTo    DateTime?
+  rules          Rule[]
+  archivedAt     DateTime?
+}
+
+model Rule {
+  id               String             @id @default(cuid())
+  name             String
+  requirementType  RequirementType
+  sourceType       RuleSourceType
+  sourceDocumentId String?
+  categoryId       String?
+  equipmentId      String?
+  active           Boolean            @default(true)
+  sourceDocument   SourceDocument?    @relation(fields: [sourceDocumentId], references: [id])
+  category         EquipmentCategory? @relation(fields: [categoryId], references: [id])
+  versions         RuleVersion[]
+
+  @@index([categoryId, active])
+}
+
+model RuleVersion {
+  id                         String                 @id @default(cuid())
+  ruleId                     String
+  version                    Int
+  article                    String?
+  paragraph                  String?
+  page                       String?
+  note                       String?
+  validFrom                  DateTime
+  validTo                    DateTime?
+  intervalValue              Int?
+  intervalUnit               IntervalUnit?
+  exactDate                  DateTime?
+  conditionJson              Json?
+  manufacturer               String?
+  model                      String?
+  inspectionType             String?
+  checklistTemplateVersionId String?
+  qualificationId            String?
+  lifetimeLimitMonths        Int?
+  createdById                String?
+  createdAt                  DateTime               @default(now())
+  rule                       Rule                   @relation(fields: [ruleId], references: [id])
+  requirements               EquipmentRequirement[]
+  protocolRules              ProtocolRuleSnapshot[]
+
+  @@unique([ruleId, version])
+  @@index([validFrom, validTo])
+}
+
+model EquipmentRequirement {
+  id               String           @id @default(cuid())
+  equipmentId      String
+  ruleVersionId    String?
+  type             RequirementType
+  name             String
+  lastCompletedAt  DateTime?
+  nextDueAt        DateTime?
+  status           ComplianceStatus @default(UNDEFINED)
+  manuallyResolved Boolean          @default(false)
+  resolutionReason String?
+  equipment        EquipmentItem    @relation(fields: [equipmentId], references: [id])
+  ruleVersion      RuleVersion?     @relation(fields: [ruleVersionId], references: [id])
+
+  @@index([equipmentId, nextDueAt])
+}
+
+model ChecklistTemplate {
+  id       String                     @id @default(cuid())
+  name     String
+  active   Boolean                    @default(true)
+  versions ChecklistTemplateVersion[]
+}
+
+model ChecklistTemplateVersion {
+  id          String             @id @default(cuid())
+  templateId  String
+  version     Int
+  validFrom   DateTime           @default(now())
+  validTo     DateTime?
+  template    ChecklistTemplate  @relation(fields: [templateId], references: [id])
+  sections    ChecklistSection[]
+  inspections Inspection[]
+
+  @@unique([templateId, version])
+}
+
+model ChecklistSection {
+  id        String                   @id @default(cuid())
+  versionId String
+  title     String
+  sortOrder Int
+  version   ChecklistTemplateVersion @relation(fields: [versionId], references: [id])
+  items     ChecklistItem[]
+}
+
+model ChecklistItem {
+  id                String           @id @default(cuid())
+  sectionId         String
+  label             String
+  responseType      String
+  required          Boolean          @default(false)
+  failRequiresNote  Boolean          @default(false)
+  failRequiresPhoto Boolean          @default(false)
+  failCreatesDefect Boolean          @default(false)
+  unit              String?
+  optionsJson       Json?
+  sortOrder         Int
+  section           ChecklistSection @relation(fields: [sectionId], references: [id])
+}
+
+model Inspection {
+  id                 String                   @id @default(cuid())
+  equipmentId        String
+  inspectorId        String
+  checklistVersionId String
+  inspectionType     String
+  level              InspectionLevel
+  state              InspectionState          @default(DRAFT)
+  result             InspectionResult?
+  startedAt          DateTime                 @default(now())
+  completedAt        DateTime?
+  note               String?
+  snapshot           Json?
+  equipment          EquipmentItem            @relation(fields: [equipmentId], references: [id])
+  checklistVersion   ChecklistTemplateVersion @relation(fields: [checklistVersionId], references: [id])
+  responses          InspectionResponse[]
+  protocol           Protocol?
+  defects            Defect[]
+}
+
+model InspectionResponse {
+  id              String     @id @default(cuid())
+  inspectionId    String
+  checklistItemId String
+  valueJson       Json
+  note            String?
+  inspection      Inspection @relation(fields: [inspectionId], references: [id])
+
+  @@unique([inspectionId, checklistItemId])
+}
+
+model Protocol {
+  id                 String                 @id @default(cuid())
+  number             String                 @unique
+  inspectionId       String                 @unique
+  snapshot           Json
+  pdfStorageKey      String?
+  createdAt          DateTime               @default(now())
+  cancelledAt        DateTime?
+  cancellationReason String?
+  correctionOfId     String?
+  inspection         Inspection             @relation(fields: [inspectionId], references: [id])
+  rules              ProtocolRuleSnapshot[]
+}
+
+model ProtocolRuleSnapshot {
+  id            String      @id @default(cuid())
+  protocolId    String
+  ruleVersionId String
+  snapshot      Json
+  protocol      Protocol    @relation(fields: [protocolId], references: [id])
+  ruleVersion   RuleVersion @relation(fields: [ruleVersionId], references: [id])
+
+  @@unique([protocolId, ruleVersionId])
+}
+
+model Defect {
+  id           String         @id @default(cuid())
+  equipmentId  String
+  inspectionId String?
+  reportedById String
+  description  String
+  severity     DefectSeverity
+  foundAt      DateTime       @default(now())
+  locationText String?
+  closedAt     DateTime?
+  equipment    EquipmentItem  @relation(fields: [equipmentId], references: [id])
+  inspection   Inspection?    @relation(fields: [inspectionId], references: [id])
+  serviceCase  ServiceCase?
+}
+
+model ServiceCase {
+  id           String            @id @default(cuid())
+  defectId     String            @unique
+  status       ServiceCaseStatus @default(NEW)
+  assignedToId String?
+  defect       Defect            @relation(fields: [defectId], references: [id])
+  events       ServiceEvent[]
+}
+
+model ServiceEvent {
+  id              String            @id @default(cuid())
+  serviceCaseId   String
+  status          ServiceCaseStatus
+  description     String
+  externalCompany String?
+  partsJson       Json?
+  price           Decimal?          @db.Decimal(12, 2)
+  performedById   String
+  createdAt       DateTime          @default(now())
+  serviceCase     ServiceCase       @relation(fields: [serviceCaseId], references: [id])
+}
+
+model Task {
+  id           String       @id @default(cuid())
+  title        String
+  description  String?
+  priority     TaskPriority @default(NORMAL)
+  dueAt        DateTime?
+  completedAt  DateTime?
+  equipmentId  String?
+  assignedToId String?
+  createdAt    DateTime     @default(now())
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  userId        String?
+  action        String
+  entityType    String
+  entityId      String
+  previousValue Json?
+  newValue      Json?
+  reason        String?
+  ipAddress     String?
+  createdAt     DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+}
+
+model SystemSetting {
+  key         String   @id
+  value       Json
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
