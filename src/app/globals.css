@@ -815,3 +815,145 @@ a {
     grid-template-columns: 1fr;
   }
 }
+.page-actions,
+.row-actions,
+.edit-actions > div {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.row-actions a {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  color: #991b1b;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+.legacy-cell {
+  display: block;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bulk-editor {
+  display: grid;
+  grid-template-columns: auto repeat(4, auto minmax(120px, 1fr)) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.bulk-editor label {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font-size: 0.82rem;
+}
+.bulk-editor select {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 9px;
+  background: #fff;
+  min-width: 0;
+}
+.equipment-editor {
+  display: grid;
+  gap: 16px;
+}
+.edit-section {
+  padding: 22px;
+}
+.edit-section h2 {
+  font-size: 1.05rem;
+  margin: 0 0 18px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+.imported-data dl {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.4fr) 1fr;
+  gap: 8px 20px;
+}
+.imported-data dt {
+  color: var(--muted);
+}
+.imported-data dd {
+  margin: 0;
+  font-weight: 650;
+}
+.new-requirement {
+  border-style: dashed;
+}
+.edit-actions {
+  position: sticky;
+  bottom: 12px;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  z-index: 5;
+}
+.repair-proposal {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 9px;
+  border-radius: 7px;
+  background: #fff7ed;
+  color: #7c2d12;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (max-width: 1250px) {
+  .bulk-editor {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
+  .bulk-editor > strong,
+  .bulk-editor > .button {
+    grid-column: 1/-1;
+  }
+}
+@media (max-width: 700px) {
+  .page-actions,
+  .edit-actions,
+  .edit-actions > div {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .edit-actions {
+    position: static;
+  }
+  .bulk-editor {
+    grid-template-columns: 1fr;
+  }
+  .bulk-editor > strong,
+  .bulk-editor > .button {
+    grid-column: auto;
+  }
+  .imported-data dl {
+    grid-template-columns: 1fr;
+  }
+  .review-badge {
+    display: block;
+    margin: 6px 0 0;
+    width: max-content;
+  }
+}

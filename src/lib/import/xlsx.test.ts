@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import {
   analyzeWorkbook,
+  identifierCellText,
   parseLegacyDate,
   parseRequirements,
   validateUpload,
@@ -165,6 +166,13 @@ async function fixture() {
 }
 
 describe("legacy XLSX", () => {
+  it("nikdy neserializuje identifikační buňku jako JavaScript Date", () => {
+    const book = new ExcelJS.Workbook();
+    const cell = book.addWorksheet("ID").getCell("A1");
+    cell.value = new Date(2026, 2, 1);
+    expect(identifierCellText(cell)).toBe("2026-03-01");
+    expect(identifierCellText(cell)).not.toContain("GMT");
+  });
   it("normalizuje samostatné povinnosti", () => {
     expect(
       parseRequirements("Týdenní kontrola, Roční, REVIZE").requirements.map(

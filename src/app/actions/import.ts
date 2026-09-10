@@ -45,7 +45,7 @@ export async function analyzeImport(formData: FormData) {
       mimeType: file.type,
       namespace: "imports/pending",
     });
-    const duplicateUids = new Set(
+    const existingEquipment = new Map(
       (
         await prisma.equipmentItem.findMany({
           where: {
@@ -60,10 +60,11 @@ export async function analyzeImport(formData: FormData) {
               ],
             },
           },
-          select: { uid: true },
+          select: { uid: true, legacyId: true },
         })
-      ).map((item) => item.uid),
+      ).map((item) => [item.uid, item]),
     );
+    const duplicateUids = new Set(existingEquipment.keys());
     const duplicateProtocols = new Map(
       (
         await prisma.protocol.findMany({
@@ -82,10 +83,32 @@ export async function analyzeImport(formData: FormData) {
       ...analysis.equipment.map((row) => {
         const duplicateInFile = seenUid.has(row.uid);
         seenUid.add(row.uid);
+        const currentLegacyId = existingEquipment.get(row.uid)?.legacyId;
+        const malformedLegacyId = Boolean(
+          currentLegacyId &&
+          (/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s/i.test(currentLegacyId) ||
+            /GMT|Central European Standard Time|T\d{2}:\d{2}:\d{2}/i.test(
+              currentLegacyId,
+            )),
+        );
+        const repair =
+          malformedLegacyId && row.legacyId && row.legacyId !== currentLegacyId
+            ? {
+                current: currentLegacyId!,
+                proposed: row.legacyId,
+                confirmed: false,
+              }
+            : undefined;
+        const previewRow = repair ? { ...row, legacyIdRepair: repair } : row;
         const messages = [
           ...row.errors,
           ...row.warnings,
           ...(duplicateInFile ? ["Duplicitní UID v souboru."] : []),
+          ...(repair
+            ? [
+                `Původní ID lze opravit: databáze „${repair.current}“ → XLSX „${repair.proposed}“.`,
+              ]
+            : []),
         ];
         const status = (
           row.errors.length || duplicateInFile
@@ -104,7 +127,7 @@ export async function analyzeImport(formData: FormData) {
           status,
           message: messages.join(" ") || null,
           rawData: row.raw,
-          previewData: row,
+          previewData: previewRow,
         };
       }),
       ...analysis.protocols.map((row) => {
@@ -207,7 +230,20 @@ export async function runDryImport(formData: FormData) {
     .filter((row) => row.sheetName === "Kontrola 1")
     .map(async (importRow) => {
       const preview = importRow.previewData as unknown as ParsedEquipmentRow;
-      if (!preview.requiresMapping) return;
+      const legacyIdRepair = preview.legacyIdRepair
+        ? {
+            ...preview.legacyIdRepair,
+            confirmed: formData.get(`repairLegacyId-${importRow.id}`) === "on",
+          }
+        : undefined;
+      if (!preview.requiresMapping) {
+        if (legacyIdRepair)
+          await prisma.importRow.update({
+            where: { id: importRow.id },
+            data: { previewData: { ...preview, legacyIdRepair } },
+          });
+        return;
+      }
       const requirements = preview.requirements.map((requirement) => {
         const prefix = `requirement-${importRow.id}-${requirement.key}`;
         const lastChoice = String(
@@ -264,7 +300,12 @@ export async function runDryImport(formData: FormData) {
       await prisma.importRow.update({
         where: { id: importRow.id },
         data: {
-          previewData: { ...preview, requirements, requiresMapping: false },
+          previewData: {
+            ...preview,
+            requirements,
+            requiresMapping: false,
+            legacyIdRepair,
+          },
         },
       });
     });
@@ -482,7 +523,9 @@ export async function executeImport(formData: FormData) {
             ? await tx.equipmentItem.update({
                 where: { id: existing.id },
                 data: {
-                  legacyId: existing.legacyId || row.legacyId || null,
+                  legacyId: row.legacyIdRepair?.confirmed
+                    ? row.legacyIdRepair.proposed
+                    : existing.legacyId || row.legacyId || null,
                   legacyProtocolReference:
                     existing.legacyProtocolReference ||
                     row.protocolReference ||

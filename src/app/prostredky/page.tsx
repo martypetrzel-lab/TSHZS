@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Eye, Pencil, Plus } from "lucide-react";
+import { bulkUpdateEquipment } from "@/app/actions/equipment-review";
 import type { Prisma } from "@prisma/client";
 import { AppShell } from "@/components/app-shell";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canEditEquipment } from "@/lib/permissions";
 const labels: Record<string, string> = {
   IN_SERVICE: "V provozu",
   OUT_OF_SERVICE: "Mimo provoz",
@@ -28,6 +30,8 @@ type Query = {
   review?: string;
   sort?: string;
   page?: string;
+  chyba?: string;
+  hotovo?: string;
 };
 export default async function Page({
   searchParams,
@@ -74,14 +78,18 @@ export default async function Page({
       : q.sort === "uid"
         ? { uid: "asc" }
         : { updatedAt: "desc" };
-  const [items, total, vehicles, categories] = await Promise.all([
+  const [items, total, vehicles, categories, locations] = await Promise.all([
       prisma.equipmentItem.findMany({
         where,
         include: {
           category: true,
           location: true,
           vehicle: true,
-          requirements: { orderBy: { nextDueAt: "asc" }, take: 1 },
+          requirements: {
+            where: { archivedAt: null },
+            orderBy: { nextDueAt: "asc" },
+            take: 1,
+          },
         },
         orderBy,
         skip: (page - 1) * 25,
@@ -96,9 +104,14 @@ export default async function Page({
         where: { archivedAt: null },
         orderBy: { name: "asc" },
       }),
+      prisma.location.findMany({
+        where: { archivedAt: null },
+        orderBy: { name: "asc" },
+      }),
     ]),
     pages = Math.max(1, Math.ceil(total / 25)),
     base = Object.fromEntries(Object.entries(q).filter(([, v]) => v));
+  const canEdit = canEditEquipment(user.roles.map(({ role }) => role.code));
   return (
     <AppShell userName={user.displayName}>
       <div className="content">
@@ -113,6 +126,12 @@ export default async function Page({
             Nový prostředek
           </Link>
         </div>
+        {q.chyba && <div className="error import-error">{q.chyba}</div>}
+        {q.hotovo && (
+          <div className="result-banner success">
+            Všechny prostředky vyžadující doplnění byly zpracovány.
+          </div>
+        )}
         <form className="card filter-grid">
           <input
             name="q"
@@ -176,58 +195,148 @@ export default async function Page({
           </label>
           <button className="button">Použít filtry</button>
         </form>
-        <div className="card table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Prostředek</th>
-                <th>UID</th>
-                <th>Původní ID</th>
-                <th>Kategorie</th>
-                <th>Umístění</th>
-                <th>Stav</th>
-                <th>Nejbližší termín</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((i) => (
-                <tr key={i.id}>
-                  <td>
-                    <Link href={`/prostredky/${i.id}`}>{i.name}</Link>
-                    {i.needsReview && (
-                      <span className="badge warn review-badge">
-                        Vyžaduje doplnění
-                      </span>
-                    )}
-                  </td>
-                  <td>{i.uid}</td>
-                  <td>{i.legacyId ?? "—"}</td>
-                  <td>{i.category.name}</td>
-                  <td>{i.vehicle?.name ?? i.location?.name ?? "Neurčeno"}</td>
-                  <td>
-                    <span
-                      className={`badge ${i.complianceStatus === "OVERDUE_BLOCKED" ? "danger" : i.complianceStatus === "DUE_SOON" ? "warn" : ""}`}
-                    >
-                      {i.complianceStatus === "OVERDUE_BLOCKED"
-                        ? "Po termínu"
-                        : labels[i.status]}
-                    </span>
-                  </td>
-                  <td>
-                    {i.requirements[0]?.nextDueAt?.toLocaleDateString(
-                      "cs-CZ",
-                    ) ?? "Nedefinováno"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!items.length && (
-            <div className="empty-state">
-              <strong>Filtru neodpovídají žádné prostředky.</strong>
+        <form action={bulkUpdateEquipment}>
+          {canEdit && (
+            <div className="card bulk-editor">
+              <strong>Hromadná úprava označených</strong>
+              <label>
+                <input type="checkbox" name="applyCategory" /> Kategorie
+              </label>
+              <select name="bulkCategoryId">
+                {categories.map((c) => (
+                  <option value={c.id} key={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <label>
+                <input type="checkbox" name="applyPlacement" /> Umístění
+              </label>
+              <select name="bulkPlacement">
+                <option value="none">Neurčeno</option>
+                {vehicles.map((v) => (
+                  <option value={`vehicle:${v.id}`} key={v.id}>
+                    Vozidlo: {v.name}
+                  </option>
+                ))}
+                {locations.map((location) => (
+                  <option value={`location:${location.id}`} key={location.id}>
+                    Stanice: {location.name}
+                  </option>
+                ))}
+              </select>
+              <label>
+                <input type="checkbox" name="applyStatus" /> Stav
+              </label>
+              <select name="bulkStatus">
+                {Object.entries(labels).map(([v, l]) => (
+                  <option value={v} key={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+              <label>
+                <input type="checkbox" name="applyReview" /> Příznak doplnění
+              </label>
+              <select name="bulkReview">
+                <option value="true">Označit</option>
+                <option value="false">Odznačit</option>
+              </select>
+              <button className="button" type="submit">
+                Hromadně upravit
+              </button>
             </div>
           )}
-        </div>
+          <div className="card table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  {canEdit && (
+                    <th>
+                      <span className="sr-only">Vybrat</span>
+                    </th>
+                  )}
+                  <th>Prostředek</th>
+                  <th>UID</th>
+                  <th>Původní ID</th>
+                  <th>Kategorie</th>
+                  <th>Umístění</th>
+                  <th>Stav</th>
+                  <th>Nejbližší termín</th>
+                  <th>Akce</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((i) => (
+                  <tr key={i.id}>
+                    {canEdit && (
+                      <td>
+                        <input
+                          type="checkbox"
+                          name="selected"
+                          value={i.id}
+                          aria-label={`Vybrat ${i.name}`}
+                        />
+                      </td>
+                    )}
+                    <td>
+                      <Link href={`/prostredky/${i.id}`}>{i.name}</Link>
+                      {i.needsReview && (
+                        <span className="badge warn review-badge">
+                          Vyžaduje doplnění
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        <Link href={`/prostredky/${i.id}`}>
+                          <Eye size={16} />
+                          Detail
+                        </Link>
+                        {canEdit && (
+                          <Link href={`/prostredky/${i.id}/upravit`}>
+                            <Pencil size={16} />
+                            Upravit
+                          </Link>
+                        )}
+                      </div>
+                    </td>
+                    <td>{i.uid}</td>
+                    <td>
+                      <span
+                        className="legacy-cell"
+                        title={i.legacyId ?? undefined}
+                      >
+                        {i.legacyId ?? "—"}
+                      </span>
+                    </td>
+                    <td>{i.category.name}</td>
+                    <td>{i.vehicle?.name ?? i.location?.name ?? "Neurčeno"}</td>
+                    <td>
+                      <span
+                        className={`badge ${i.complianceStatus === "OVERDUE_BLOCKED" ? "danger" : i.complianceStatus === "DUE_SOON" ? "warn" : ""}`}
+                      >
+                        {i.complianceStatus === "OVERDUE_BLOCKED"
+                          ? "Po termínu"
+                          : labels[i.status]}
+                      </span>
+                    </td>
+                    <td>
+                      {i.requirements[0]?.nextDueAt?.toLocaleDateString(
+                        "cs-CZ",
+                      ) ?? "Nedefinováno"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!items.length && (
+              <div className="empty-state">
+                <strong>Filtru neodpovídají žádné prostředky.</strong>
+              </div>
+            )}
+          </div>
+        </form>
         <div className="pagination">
           <Link
             className="button secondary"

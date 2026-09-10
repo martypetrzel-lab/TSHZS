@@ -264,6 +264,8 @@ export default async function ImportDetail({
               <tbody>
                 {equipment.slice(0, 500).map((r) => {
                   const p = r.previewData as Record<string, unknown>;
+                  const preview =
+                    r.previewData as unknown as ParsedEquipmentRow;
                   return (
                     <tr key={r.id}>
                       <td>
@@ -299,7 +301,24 @@ export default async function ImportDetail({
                           : "—"}
                       </td>
                       <td>{String(p.protocolReference ?? "—")}</td>
-                      <td className="message-cell">{r.message ?? "—"}</td>
+                      <td className="message-cell">
+                        {r.message ?? "—"}
+                        {preview.legacyIdRepair && (
+                          <label className="repair-proposal">
+                            <span>
+                              Databáze: {preview.legacyIdRepair.current}
+                            </span>
+                            <span>XLSX: {preview.legacyIdRepair.proposed}</span>
+                            <strong>
+                              <input
+                                type="checkbox"
+                                name={`repairLegacyId-${r.id}`}
+                              />{" "}
+                              OPRAVIT PŮVODNÍ ID
+                            </strong>
+                          </label>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}

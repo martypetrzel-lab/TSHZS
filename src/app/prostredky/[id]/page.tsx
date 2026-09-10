@@ -4,12 +4,14 @@ import {
   AlertTriangle,
   ClipboardCheck,
   MapPin,
+  Pencil,
   QrCode,
   Wrench,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canEditEquipment } from "@/lib/permissions";
 export const dynamic = "force-dynamic";
 const statuses: Record<string, string> = {
   IN_SERVICE: "V PROVOZU",
@@ -36,6 +38,7 @@ export default async function EquipmentDetail({
       location: true,
       vehicle: true,
       requirements: {
+        where: { archivedAt: null },
         include: {
           ruleVersion: {
             include: { rule: { include: { sourceDocument: true } } },
@@ -54,6 +57,7 @@ export default async function EquipmentDetail({
   const blocked = item.complianceStatus === "OVERDUE_BLOCKED";
   const next = item.requirements[0];
   const today = new Date();
+  const canEdit = canEditEquipment(user.roles.map(({ role }) => role.code));
   return (
     <AppShell userName={user.displayName}>
       <div className="content">
@@ -66,10 +70,21 @@ export default async function EquipmentDetail({
               Výr. č. {item.serialNumber ?? "neuvedeno"}
             </p>
           </div>
-          <button className="button">
-            <ClipboardCheck size={18} />
-            Provést kontrolu
-          </button>
+          <div className="page-actions">
+            <button className="button">
+              <ClipboardCheck size={18} />
+              Provést kontrolu
+            </button>
+            {canEdit && (
+              <Link
+                className="button secondary"
+                href={`/prostredky/${item.id}/upravit`}
+              >
+                <Pencil size={18} />
+                Upravit prostředek
+              </Link>
+            )}
+          </div>
         </div>
         <section className="status-strip">
           <div className="status-block">

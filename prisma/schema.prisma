@@ -417,6 +417,7 @@ model EquipmentRequirement {
   sourceRuleId     String?
   note             String?
   needsReview      Boolean                       @default(false)
+  archivedAt       DateTime?
   manuallyResolved Boolean                       @default(false)
   resolutionReason String?
   equipment        EquipmentItem                 @relation(fields: [equipmentId], references: [id])
@@ -425,6 +426,7 @@ model EquipmentRequirement {
   history          EquipmentRequirementHistory[]
 
   @@index([equipmentId, nextDueAt])
+  @@index([equipmentId, archivedAt])
   @@index([sourceRuleId])
 }
 

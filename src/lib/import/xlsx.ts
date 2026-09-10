@@ -48,6 +48,7 @@ export type ParsedEquipmentRow = {
   errors: string[];
   needsReview: boolean;
   requiresMapping: boolean;
+  legacyIdRepair?: { current: string; proposed: string; confirmed: boolean };
   raw: Record<string, string | null>;
 };
 export type ParsedProtocolRow = {
@@ -86,7 +87,19 @@ function text(value: ExcelJS.CellValue | undefined): string {
   return String(value).trim();
 }
 
-function cellText(cell: ExcelJS.Cell): string {
+export function identifierCellText(cell: ExcelJS.Cell): string {
+  if (cell.value instanceof Date) {
+    const rendered = cell.text?.trim() ?? "";
+    if (
+      rendered &&
+      !/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s|GMT|Standard Time/i.test(rendered)
+    )
+      return rendered;
+    const year = cell.value.getFullYear();
+    const month = String(cell.value.getMonth() + 1).padStart(2, "0");
+    const day = String(cell.value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
   return cell.text?.trim() || text(cell.value);
 }
 
@@ -277,7 +290,7 @@ export async function analyzeWorkbook(
       const row = main.getRow(number);
       const raw = rowObject(row, headers);
       const originalUid = text(row.getCell(headers.get("UID")!).value);
-      const legacyId = cellText(row.getCell(headers.get("ID")!));
+      const legacyId = identifierCellText(row.getCell(headers.get("ID")!));
       const originalName = text(
         row.getCell(headers.get("Tech.prostředek")!).value,
       );
