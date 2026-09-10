@@ -121,6 +121,7 @@ model Station {
 
 model Location {
   id         String          @id @default(cuid())
+  seedKey    String?         @unique
   name       String
   stationId  String
   parentId   String?
@@ -314,6 +315,7 @@ model EquipmentLocationHistory {
 
 model SourceDocument {
   id             String         @id @default(cuid())
+  seedKey        String?        @unique
   title          String
   documentNumber String?
   sourceType     RuleSourceType
@@ -325,6 +327,7 @@ model SourceDocument {
 
 model Rule {
   id               String             @id @default(cuid())
+  seedKey          String?            @unique
   name             String
   requirementType  RequirementType
   sourceType       RuleSourceType
@@ -388,6 +391,7 @@ model EquipmentRequirement {
 
 model ChecklistTemplate {
   id       String                     @id @default(cuid())
+  seedKey  String?                    @unique
   name     String
   active   Boolean                    @default(true)
   versions ChecklistTemplateVersion[]

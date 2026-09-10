@@ -57,7 +57,7 @@ Testy systému pravidel ověřují volbu nejkratšího závazného termínu, bud
 
 Railway je hlavní cílové prostředí. Připojte repozitář `martypetrzel-lab/TSHZS`, nastavte produkční větev `main` a do stejného Railway projektu přidejte PostgreSQL. Do webové služby předejte `DATABASE_URL` referencí na proměnnou PostgreSQL služby; produkční start odmítne adresu mířící na `localhost`.
 
-Soubor `railway.json` vybírá kořenový vícefázový `Dockerfile`, nastavuje `/api/health`, migrace `npm run db:deploy` jako samostatný pre-deploy krok a restart pouze při selhání. Když migrace skončí nenulovým kódem, nová verze se nespustí. Health endpoint ověřuje spojení s databází, vrací pouze `ok` nebo `unavailable` a necacheuje se.
+Soubor `railway.json` vybírá kořenový vícefázový `Dockerfile`, nastavuje `/api/health` a před startem nové verze postupně spustí `npm run db:deploy` a idempotentní `npm run db:seed`. Když migrace nebo seed skončí nenulovým kódem, nová verze se nespustí. Seed nepoužívá `tsx` ani jinou vývojovou závislost. Po prvním vytvoření administrátora lze obě `INITIAL_ADMIN_*` proměnné odstranit; další seedy master data dál bezpečně aktualizují a uživatelský účet ani heslo nemění. Health endpoint ověřuje spojení s databází, vrací pouze `ok` nebo `unavailable` a necacheuje se.
 
 Railway předává `PORT` automaticky. Standalone Next.js server jej čte za běhu a poslouchá na `0.0.0.0`; Dockerfile proto produkční port nepřepisuje. Start používá exec-form `CMD`, takže Node běží jako PID 1 a dostane `SIGTERM` přímo. Next.js při SIGTERM dokončí rozpracované požadavky. V Railway Variables nastavte `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30`, aby před případným SIGKILL dostal doporučené okno pro korektní ukončení.
 
