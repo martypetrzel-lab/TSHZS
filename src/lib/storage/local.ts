@@ -5,7 +5,7 @@ import path from "node:path";
 import type { StorageProvider, StoreInput } from "./types";
 
 export class LocalStorageProvider implements StorageProvider {
-  private readonly root = path.resolve(process.env.LOCAL_STORAGE_PATH ?? "./storage");
+  private readonly root = path.resolve(/* turbopackIgnore: true */ process.env.LOCAL_STORAGE_PATH ?? "./storage");
 
   async put(input: StoreInput) {
     const extension = path.extname(input.fileName).toLowerCase().replace(/[^a-z0-9.]/g, "");

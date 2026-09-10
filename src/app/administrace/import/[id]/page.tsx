@@ -1,0 +1,222 @@
+import { notFound } from "next/navigation";
+import { CheckCircle2, FlaskConical, PlayCircle } from "lucide-react";
+import { executeImport, runDryImport } from "@/app/actions/import";
+import { AppShell } from "@/components/app-shell";
+import { requireImportAdministrator } from "@/lib/authorization";
+import { prisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
+const labels: Record<string, string> = {
+  NEW: "NOVÝ",
+  UPDATE: "AKTUALIZACE",
+  SKIP: "PŘESKOČIT",
+  WARNING: "VAROVÁNÍ",
+  ERROR: "CHYBA",
+  IMPORTED: "IMPORTOVÁNO",
+};
+export default async function ImportDetail({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ chyba?: string; dry?: string; hotovo?: string }>;
+}) {
+  const user = await requireImportAdministrator();
+  const { id } = await params;
+  const query = await searchParams;
+  const job = await prisma.importJob.findUnique({
+    where: { id },
+    include: {
+      rows: { orderBy: [{ sheetName: "asc" }, { rowNumber: "asc" }] },
+    },
+  });
+  if (!job) notFound();
+  const summary = (job.summaryJson ?? {}) as Record<string, unknown>;
+  const sheets = (summary.sheets ?? []) as { name: string; rows: number }[];
+  const equipment = job.rows.filter((r) => r.sheetName === "Kontrola 1");
+  const protocols = job.rows.filter(
+    (r) => r.sheetName === "Historie protokolů",
+  );
+  const completed = job.status === "COMPLETED" || job.status === "FAILED";
+  return (
+    <AppShell userName={user.displayName}>
+      <div className="content">
+        <div className="page-head">
+          <div>
+            <p className="eyebrow">Import · {job.status}</p>
+            <h1>{job.fileName}</h1>
+            <p className="muted">
+              Kontrolní součet SHA-256: {job.checksum.slice(0, 16)}…
+            </p>
+          </div>
+        </div>
+        {query.chyba && <div className="error import-error">{query.chyba}</div>}
+        {completed && (
+          <div
+            className={`result-banner ${job.status === "COMPLETED" ? "success" : ""}`}
+          >
+            <CheckCircle2 />
+            <div>
+              <strong>
+                {job.status === "COMPLETED"
+                  ? "Import dokončen"
+                  : "Import dokončen s chybami"}
+              </strong>
+              <p>
+                Vytvořeno {job.createdRows}, aktualizováno {job.updatedRows},
+                přeskočeno {job.skippedRows}, chyby {job.errorRows}.
+              </p>
+            </div>
+          </div>
+        )}
+        <section className="grid-stats import-stats">
+          <div className="card stat">
+            <span>Listy</span>
+            <strong>{sheets.length}</strong>
+            <small>{sheets.map((s) => s.name).join(", ")}</small>
+          </div>
+          <div className="card stat ok">
+            <span>Prostředky</span>
+            <strong>{equipment.length}</strong>
+          </div>
+          <div className="card stat">
+            <span>Historické protokoly</span>
+            <strong>{protocols.length}</strong>
+          </div>
+          <div className="card stat danger">
+            <span>Chyby / varování</span>
+            <strong>
+              {job.errorRows} / {job.warningRows}
+            </strong>
+          </div>
+        </section>
+        <section className="card mapping">
+          <div className="panel-head">
+            <h2>Mapování sloupců</h2>
+            <span className="muted">
+              Mapování lze před importem zkontrolovat
+            </span>
+          </div>
+          <div className="mapping-grid">
+            {Object.entries(job.mappingJson as Record<string, string>).map(
+              ([from, to]) => (
+                <div key={from}>
+                  <strong>{from}</strong>
+                  <span>→</span>
+                  <select
+                    name={`map-${from}`}
+                    defaultValue={to}
+                    aria-label={`Mapování ${from}`}
+                  >
+                    <option value={to}>{to}</option>
+                    <option value="ignore">Ignorovat</option>
+                  </select>
+                </div>
+              ),
+            )}
+          </div>
+          <p className="muted mapping-note">
+            Umístění: PHA, SCANIA a TA → stejnojmenné vozidlo; STANICE →
+            umístění Stanice. Neznámé hodnoty zůstanou ve varování.
+          </p>
+        </section>
+        <section className="card table-wrap import-preview">
+          <div className="panel-head">
+            <h2>Náhled prostředků</h2>
+            <span>{equipment.length} řádků</span>
+          </div>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Stav</th>
+                <th>UID</th>
+                <th>Název</th>
+                <th>ID</th>
+                <th>Vůz</th>
+                <th>Povinnosti</th>
+                <th>Poslední kontrola</th>
+                <th>Další termín</th>
+                <th>Protokol</th>
+                <th>Poznámka</th>
+              </tr>
+            </thead>
+            <tbody>
+              {equipment.slice(0, 500).map((r) => {
+                const p = r.previewData as Record<string, unknown>;
+                return (
+                  <tr key={r.id}>
+                    <td>
+                      <span
+                        className={`badge import-${r.status.toLowerCase()}`}
+                      >
+                        {labels[r.status]}
+                      </span>
+                    </td>
+                    <td>{r.uid}</td>
+                    <td>{String(p.name ?? "")}</td>
+                    <td>{String(p.legacyId ?? "")}</td>
+                    <td>{String(p.vehicle ?? "")}</td>
+                    <td>
+                      {Array.isArray(p.requirements)
+                        ? p.requirements
+                            .map((v) => (v as { name: string }).name)
+                            .join(", ")
+                        : ""}
+                    </td>
+                    <td>
+                      {p.lastCompletedAt
+                        ? new Date(
+                            String(p.lastCompletedAt),
+                          ).toLocaleDateString("cs-CZ")
+                        : "—"}
+                    </td>
+                    <td>
+                      {p.nextDueAt
+                        ? new Date(String(p.nextDueAt)).toLocaleDateString(
+                            "cs-CZ",
+                          )
+                        : "—"}
+                    </td>
+                    <td>{String(p.protocolReference ?? "—")}</td>
+                    <td className="message-cell">{r.message ?? "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+        {!completed && (
+          <section className="card confirmation">
+            <div>
+              <strong>Import upraví databázi TSHZS.</strong>
+              <p className="muted">
+                Nejprve proveďte kontrolní běh bez zápisu. Import s chybami
+                nelze potvrdit.
+              </p>
+            </div>
+            <div className="confirm-actions">
+              <form action={runDryImport}>
+                <input type="hidden" name="jobId" value={job.id} />
+                <button className="button secondary" type="submit">
+                  <FlaskConical size={18} />
+                  Provést dry-run
+                </button>
+              </form>
+              <form action={executeImport}>
+                <input type="hidden" name="jobId" value={job.id} />
+                <button
+                  className="button"
+                  type="submit"
+                  disabled={job.status !== "DRY_RUN_READY" || job.errorRows > 0}
+                >
+                  <PlayCircle size={18} />
+                  PROVÉST IMPORT
+                </button>
+              </form>
+            </div>
+          </section>
+        )}
+      </div>
+    </AppShell>
+  );
+}

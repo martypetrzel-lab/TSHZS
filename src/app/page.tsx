@@ -1,7 +1,150 @@
 import Link from "next/link";
-import { AlertTriangle, ClipboardCheck, PackagePlus, QrCode, Wrench } from "lucide-react";
+import {
+  AlertTriangle,
+  ClipboardCheck,
+  PackagePlus,
+  QrCode,
+  Wrench,
+} from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-export const dynamic="force-dynamic";
-export default async function Dashboard(){const user=await requireUser();const[t,totalOverdue,openDefects,dueSoon]=await Promise.all([prisma.equipmentItem.count({where:{archivedAt:null}}),prisma.equipmentRequirement.count({where:{status:"OVERDUE_BLOCKED"}}),prisma.defect.count({where:{closedAt:null}}),prisma.equipmentRequirement.count({where:{status:{in:["DUE_SOON","WARNING"]}}})]);const deadlines=await prisma.equipmentRequirement.findMany({where:{nextDueAt:{not:null}},include:{equipment:true},orderBy:{nextDueAt:"asc"},take:5});return <AppShell userName={user.displayName}><div className="content"><div className="page-head"><div><p className="eyebrow">Přehled TS</p><h1>Dobré odpoledne, {user.displayName.split(" ")[0]}</h1><p className="muted">Aktuální provozní stav stanice Mstětice</p></div><Link className="button" href="/prostredky/novy"><PackagePlus size={18}/>Přidat prostředek</Link></div><section className="grid-stats"><div className="card stat ok"><span>Prostředků v evidenci</span><strong>{t}</strong><small className="muted">celkem</small></div><div className="card stat danger"><span>Po termínu</span><strong>{totalOverdue}</strong><small className="muted">blokováno</small></div><div className="card stat warn"><span>Blížící se termíny</span><strong>{dueSoon}</strong><small className="muted">vyžaduje pozornost</small></div><div className="card stat"><span>Otevřené závady</span><strong>{openDefects}</strong><small className="muted">servisní případy</small></div></section><section className="dashboard-grid"><div className="card"><div className="panel-head"><h2>Nejbližší povinnosti</h2><Link className="muted" href="/kalendar">Zobrazit kalendář →</Link></div><div className="panel-body">{deadlines.length?deadlines.map(d=><Link className="deadline" href={`/prostredky/${d.equipmentId}`} key={d.id}><i className={`dot ${d.status==="OVERDUE_BLOCKED"?"red":d.status==="DUE_SOON"?"orange":"yellow"}`}/><div><strong>{d.equipment.name}</strong><span>{d.name} · {d.equipment.uid}</span></div><time>{d.nextDueAt?.toLocaleDateString("cs-CZ")}</time></Link>):<p className="muted">Zatím nejsou naplánované žádné povinnosti.</p>}</div></div><div className="card"><div className="panel-head"><h2>Rychlé akce</h2></div><div className="quick-grid"><Link className="quick" href="/prostredky/novy"><span><PackagePlus size={21}/></span>Nový prostředek</Link><Link className="quick" href="/kontroly"><span><ClipboardCheck size={21}/></span>Provést kontrolu</Link><Link className="quick" href="/zavady"><span><Wrench size={21}/></span>Nahlásit závadu</Link><Link className="quick" href="/qr"><span><QrCode size={21}/></span>Naskenovat QR</Link></div></div></section>{totalOverdue>0&&<div className="reason" style={{marginTop:18}}><strong><AlertTriangle size={18} style={{display:"inline",marginRight:8}}/>Prostředky blokované po termínu</strong><p className="muted">Provozuschopnost nelze zobrazit jako vyhovující, dokud nebude povinná kontrola nebo revize platně dokončena.</p></div>}</div></AppShell>}
+export const dynamic = "force-dynamic";
+export default async function Dashboard() {
+  const user = await requireUser();
+  const [t, totalOverdue, openDefects, dueSoon] = await Promise.all([
+    prisma.equipmentItem.count({ where: { archivedAt: null } }),
+    prisma.equipmentRequirement.count({ where: { status: "OVERDUE_BLOCKED" } }),
+    prisma.defect.count({ where: { closedAt: null } }),
+    prisma.equipmentRequirement.count({
+      where: { status: { in: ["DUE_SOON", "WARNING"] } },
+    }),
+  ]);
+  const deadlines = await prisma.equipmentRequirement.findMany({
+    where: { nextDueAt: { not: null } },
+    include: { equipment: true },
+    orderBy: { nextDueAt: "asc" },
+    take: 5,
+  });
+  return (
+    <AppShell userName={user.displayName}>
+      <div className="content">
+        <div className="page-head">
+          <div>
+            <p className="eyebrow">Přehled TS</p>
+            <h1>Dobré odpoledne, {user.displayName.split(" ")[0]}</h1>
+            <p className="muted">Aktuální provozní stav stanice Mstětice</p>
+          </div>
+          <Link className="button" href="/prostredky/novy">
+            <PackagePlus size={18} />
+            Přidat prostředek
+          </Link>
+        </div>
+        <section className="grid-stats">
+          <div className="card stat ok">
+            <span>Prostředků v evidenci</span>
+            <strong>{t}</strong>
+            <small className="muted">celkem</small>
+          </div>
+          <div className="card stat danger">
+            <span>Po termínu</span>
+            <strong>{totalOverdue}</strong>
+            <small className="muted">blokováno</small>
+          </div>
+          <div className="card stat warn">
+            <span>Blížící se termíny</span>
+            <strong>{dueSoon}</strong>
+            <small className="muted">vyžaduje pozornost</small>
+          </div>
+          <div className="card stat">
+            <span>Otevřené závady</span>
+            <strong>{openDefects}</strong>
+            <small className="muted">servisní případy</small>
+          </div>
+        </section>
+        <section className="dashboard-grid">
+          <div className="card">
+            <div className="panel-head">
+              <h2>Nejbližší povinnosti</h2>
+              <Link className="muted" href="/kalendar">
+                Zobrazit kalendář →
+              </Link>
+            </div>
+            <div className="panel-body">
+              {deadlines.length ? (
+                deadlines.map((d) => (
+                  <Link
+                    className="deadline"
+                    href={`/prostredky/${d.equipmentId}`}
+                    key={d.id}
+                  >
+                    <i
+                      className={`dot ${d.status === "OVERDUE_BLOCKED" ? "red" : d.status === "DUE_SOON" ? "orange" : "yellow"}`}
+                    />
+                    <div>
+                      <strong>{d.equipment.name}</strong>
+                      <span>
+                        {d.name} · {d.equipment.uid}
+                      </span>
+                    </div>
+                    <time>{d.nextDueAt?.toLocaleDateString("cs-CZ")}</time>
+                  </Link>
+                ))
+              ) : (
+                <p className="muted">
+                  Zatím nejsou naplánované žádné povinnosti.
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="card">
+            <div className="panel-head">
+              <h2>Rychlé akce</h2>
+            </div>
+            <div className="quick-grid">
+              <Link className="quick" href="/prostredky/novy">
+                <span>
+                  <PackagePlus size={21} />
+                </span>
+                Nový prostředek
+              </Link>
+              <Link className="quick" href="/kontroly">
+                <span>
+                  <ClipboardCheck size={21} />
+                </span>
+                Provést kontrolu
+              </Link>
+              <Link className="quick" href="/zavady">
+                <span>
+                  <Wrench size={21} />
+                </span>
+                Nahlásit závadu
+              </Link>
+              <Link className="quick" href="/qr">
+                <span>
+                  <QrCode size={21} />
+                </span>
+                Naskenovat QR
+              </Link>
+            </div>
+          </div>
+        </section>
+        {totalOverdue > 0 && (
+          <div className="reason" style={{ marginTop: 18 }}>
+            <strong>
+              <AlertTriangle
+                size={18}
+                style={{ display: "inline", marginRight: 8 }}
+              />
+              Prostředky blokované po termínu
+            </strong>
+            <p className="muted">
+              Provozuschopnost nelze zobrazit jako vyhovující, dokud nebude
+              povinná kontrola nebo revize platně dokončena.
+            </p>
+          </div>
+        )}
+      </div>
+    </AppShell>
+  );
+}

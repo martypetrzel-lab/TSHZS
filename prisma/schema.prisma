@@ -48,6 +48,24 @@ enum RuleSourceType {
   INTERNAL_CEPRO
   LOCAL_MSTETICE
   INDIVIDUAL
+  LEGACY_IMPORT
+}
+
+enum ImportJobStatus {
+  PREVIEW_READY
+  DRY_RUN_READY
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ImportRowStatus {
+  NEW
+  UPDATE
+  SKIP
+  WARNING
+  ERROR
+  IMPORTED
 }
 
 enum IntervalUnit {
@@ -158,6 +176,7 @@ model User {
   qualifications UserQualification[]
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
+  importJobs     ImportJob[]
 }
 
 model Session {
@@ -235,56 +254,63 @@ model EquipmentCategory {
 }
 
 model EquipmentItem {
-  id                     String                     @id @default(cuid())
-  uid                    String                     @unique
-  name                   String
-  evidenceMode           EvidenceMode               @default(INDIVIDUAL)
-  quantity               Int                        @default(1)
-  minimumQuantity        Int?
-  categoryId             String
-  organizationId         String
-  stationId              String
-  locationId             String?
-  vehicleId              String?
-  manufacturer           String?
-  model                  String?
-  typeName               String?
-  serialNumber           String?
-  registrationNumber     String?
-  internalId             String?
-  manufacturedAt         DateTime?
-  manufacturedYear       Int?
-  acquiredAt             DateTime?
-  registeredAt           DateTime                   @default(now())
-  warrantyUntil          DateTime?
-  declaredLifetimeMonths Int?
-  lifetimeUntil          DateTime?
-  purchasePrice          Decimal?                   @db.Decimal(12, 2)
-  supplier               String?
-  status                 EquipmentStatus            @default(IN_STOCK)
-  complianceStatus       ComplianceStatus           @default(UNDEFINED)
-  note                   String?
-  parentSetId            String?
-  category               EquipmentCategory          @relation(fields: [categoryId], references: [id])
-  organization           Organization               @relation(fields: [organizationId], references: [id])
-  station                Station                    @relation(fields: [stationId], references: [id])
-  location               Location?                  @relation(fields: [locationId], references: [id])
-  vehicle                Vehicle?                   @relation(fields: [vehicleId], references: [id])
-  parentSet              EquipmentItem?             @relation("EquipmentSet", fields: [parentSetId], references: [id])
-  components             EquipmentItem[]            @relation("EquipmentSet")
-  requirements           EquipmentRequirement[]
-  statusHistory          EquipmentStatusHistory[]
-  locationHistory        EquipmentLocationHistory[]
-  inspections            Inspection[]
-  defects                Defect[]
-  createdById            String?
-  createdAt              DateTime                   @default(now())
-  updatedAt              DateTime                   @updatedAt
-  archivedAt             DateTime?
+  id                      String                     @id @default(cuid())
+  uid                     String                     @unique
+  name                    String
+  evidenceMode            EvidenceMode               @default(INDIVIDUAL)
+  quantity                Int                        @default(1)
+  minimumQuantity         Int?
+  categoryId              String
+  organizationId          String
+  stationId               String
+  locationId              String?
+  vehicleId               String?
+  manufacturer            String?
+  model                   String?
+  typeName                String?
+  serialNumber            String?
+  registrationNumber      String?
+  internalId              String?
+  legacyId                String?
+  legacyProtocolReference String?
+  importedAt              DateTime?
+  importJobId             String?
+  manufacturedAt          DateTime?
+  manufacturedYear        Int?
+  acquiredAt              DateTime?
+  registeredAt            DateTime                   @default(now())
+  warrantyUntil           DateTime?
+  declaredLifetimeMonths  Int?
+  lifetimeUntil           DateTime?
+  purchasePrice           Decimal?                   @db.Decimal(12, 2)
+  supplier                String?
+  status                  EquipmentStatus            @default(IN_STOCK)
+  complianceStatus        ComplianceStatus           @default(UNDEFINED)
+  note                    String?
+  parentSetId             String?
+  category                EquipmentCategory          @relation(fields: [categoryId], references: [id])
+  organization            Organization               @relation(fields: [organizationId], references: [id])
+  station                 Station                    @relation(fields: [stationId], references: [id])
+  location                Location?                  @relation(fields: [locationId], references: [id])
+  vehicle                 Vehicle?                   @relation(fields: [vehicleId], references: [id])
+  parentSet               EquipmentItem?             @relation("EquipmentSet", fields: [parentSetId], references: [id])
+  components              EquipmentItem[]            @relation("EquipmentSet")
+  requirements            EquipmentRequirement[]
+  statusHistory           EquipmentStatusHistory[]
+  locationHistory         EquipmentLocationHistory[]
+  inspections             Inspection[]
+  defects                 Defect[]
+  legacyProtocols         Protocol[]
+  createdById             String?
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
+  archivedAt              DateTime?
 
   @@index([stationId, status])
   @@index([categoryId])
   @@index([serialNumber])
+  @@index([legacyId])
+  @@index([importJobId])
 }
 
 model EquipmentStatusHistory {
@@ -468,15 +494,23 @@ model InspectionResponse {
 model Protocol {
   id                 String                 @id @default(cuid())
   number             String                 @unique
-  inspectionId       String                 @unique
+  inspectionId       String?                @unique
+  equipmentId        String?
   snapshot           Json
   pdfStorageKey      String?
+  externalUrl        String?
+  legacyImported     Boolean                @default(false)
+  importJobId        String?
   createdAt          DateTime               @default(now())
   cancelledAt        DateTime?
   cancellationReason String?
   correctionOfId     String?
-  inspection         Inspection             @relation(fields: [inspectionId], references: [id])
+  inspection         Inspection?            @relation(fields: [inspectionId], references: [id])
+  equipment          EquipmentItem?         @relation(fields: [equipmentId], references: [id])
   rules              ProtocolRuleSnapshot[]
+
+  @@index([equipmentId, createdAt])
+  @@index([importJobId])
 }
 
 model ProtocolRuleSnapshot {
@@ -576,4 +610,48 @@ model Attachment {
 
   @@index([ownerType, ownerId, createdAt])
   @@index([uploadedById, createdAt])
+}
+
+model ImportJob {
+  id           String          @id @default(cuid())
+  fileName     String
+  checksum     String
+  sizeBytes    BigInt
+  storageKey   String?
+  status       ImportJobStatus @default(PREVIEW_READY)
+  startedAt    DateTime        @default(now())
+  finishedAt   DateTime?
+  uploadedById String
+  uploadedBy   User            @relation(fields: [uploadedById], references: [id])
+  totalRows    Int             @default(0)
+  createdRows  Int             @default(0)
+  updatedRows  Int             @default(0)
+  skippedRows  Int             @default(0)
+  warningRows  Int             @default(0)
+  errorRows    Int             @default(0)
+  summaryJson  Json?
+  mappingJson  Json?
+  rows         ImportRow[]
+
+  @@index([uploadedById, startedAt])
+}
+
+model ImportRow {
+  id             String          @id @default(cuid())
+  importJobId    String
+  importJob      ImportJob       @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  sheetName      String
+  rowNumber      Int
+  uid            String?
+  action         String
+  status         ImportRowStatus
+  message        String?
+  rawData        Json
+  previewData    Json?
+  resultEntityId String?
+  createdAt      DateTime        @default(now())
+
+  @@unique([importJobId, sheetName, rowNumber])
+  @@index([importJobId, status])
+  @@index([uid])
 }

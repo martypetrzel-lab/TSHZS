@@ -3,5 +3,101 @@ import { AppShell } from "@/components/app-shell";
 import { createEquipment } from "@/app/actions/equipment";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-export const dynamic="force-dynamic";
-export default async function NewEquipment({searchParams}:{searchParams:Promise<{chyba?:string}>}){const user=await requireUser();const[categories,locations,params]=await Promise.all([prisma.equipmentCategory.findMany({where:{archivedAt:null},orderBy:{name:"asc"}}),prisma.location.findMany({where:{archivedAt:null},orderBy:{name:"asc"}}),searchParams]);return <AppShell userName={user.displayName}><div className="content"><div className="page-head"><div><p className="eyebrow">Evidence prostředků</p><h1>Nový prostředek</h1><p className="muted">UID bude vytvořeno automaticky a zůstane neměnné.</p></div></div>{params.chyba&&<p className="error">{params.chyba}</p>}<form action={createEquipment} className="card form-card"><div className="form-grid"><div className="field full"><label htmlFor="name">Název prostředku *</label><input id="name" name="name" required placeholder="Např. Nastavovací žebřík"/></div><div className="field"><label htmlFor="categoryId">Kategorie *</label><select id="categoryId" name="categoryId" required><option value="">Vyberte kategorii</option>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div className="field"><label htmlFor="locationId">Umístění</label><select id="locationId" name="locationId"><option value="">Zatím neurčeno</option>{locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></div><div className="field"><label htmlFor="manufacturer">Výrobce</label><input id="manufacturer" name="manufacturer"/></div><div className="field"><label htmlFor="model">Model</label><input id="model" name="model"/></div><div className="field"><label htmlFor="serialNumber">Výrobní číslo</label><input id="serialNumber" name="serialNumber"/></div><div className="field"><label htmlFor="registrationNumber">Evidenční číslo</label><input id="registrationNumber" name="registrationNumber"/></div><div className="field full"><label htmlFor="note">Poznámka</label><textarea id="note" name="note"/></div></div><div className="form-actions"><Link className="button secondary" href="/prostredky">Zrušit</Link><button className="button" type="submit">Založit prostředek</button></div></form></div></AppShell>}
+export const dynamic = "force-dynamic";
+export default async function NewEquipment({
+  searchParams,
+}: {
+  searchParams: Promise<{ chyba?: string }>;
+}) {
+  const user = await requireUser();
+  const [categories, locations, params] = await Promise.all([
+    prisma.equipmentCategory.findMany({
+      where: { archivedAt: null },
+      orderBy: { name: "asc" },
+    }),
+    prisma.location.findMany({
+      where: { archivedAt: null },
+      orderBy: { name: "asc" },
+    }),
+    searchParams,
+  ]);
+  return (
+    <AppShell userName={user.displayName}>
+      <div className="content">
+        <div className="page-head">
+          <div>
+            <p className="eyebrow">Evidence prostředků</p>
+            <h1>Nový prostředek</h1>
+            <p className="muted">
+              UID bude vytvořeno automaticky a zůstane neměnné.
+            </p>
+          </div>
+        </div>
+        {params.chyba && <p className="error">{params.chyba}</p>}
+        <form action={createEquipment} className="card form-card">
+          <div className="form-grid">
+            <div className="field full">
+              <label htmlFor="name">Název prostředku *</label>
+              <input
+                id="name"
+                name="name"
+                required
+                placeholder="Např. Nastavovací žebřík"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="categoryId">Kategorie *</label>
+              <select id="categoryId" name="categoryId" required>
+                <option value="">Vyberte kategorii</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="locationId">Umístění</label>
+              <select id="locationId" name="locationId">
+                <option value="">Zatím neurčeno</option>
+                {locations.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="manufacturer">Výrobce</label>
+              <input id="manufacturer" name="manufacturer" />
+            </div>
+            <div className="field">
+              <label htmlFor="model">Model</label>
+              <input id="model" name="model" />
+            </div>
+            <div className="field">
+              <label htmlFor="serialNumber">Výrobní číslo</label>
+              <input id="serialNumber" name="serialNumber" />
+            </div>
+            <div className="field">
+              <label htmlFor="registrationNumber">Evidenční číslo</label>
+              <input id="registrationNumber" name="registrationNumber" />
+            </div>
+            <div className="field full">
+              <label htmlFor="note">Poznámka</label>
+              <textarea id="note" name="note" />
+            </div>
+          </div>
+          <div className="form-actions">
+            <Link className="button secondary" href="/prostredky">
+              Zrušit
+            </Link>
+            <button className="button" type="submit">
+              Založit prostředek
+            </button>
+          </div>
+        </form>
+      </div>
+    </AppShell>
+  );
+}
