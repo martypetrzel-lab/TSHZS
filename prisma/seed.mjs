@@ -120,8 +120,10 @@ async function seedInitialAdmin(organizationId) {
 }
 
 async function main() {
+  console.info("=== TSHZS SEED START ===");
   const organization = await seedMasterData();
   await seedInitialAdmin(organization.id);
+  console.info("=== TSHZS SEED DONE ===");
 }
 
 main()
