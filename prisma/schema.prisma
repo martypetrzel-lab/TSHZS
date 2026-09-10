@@ -556,3 +556,20 @@ model SystemSetting {
   updatedAt   DateTime @updatedAt
   updatedById String?
 }
+
+model Attachment {
+  id             String    @id @default(cuid())
+  ownerType      String
+  ownerId        String
+  fileName       String
+  mimeType       String
+  sizeBytes      BigInt
+  storageKey     String    @unique
+  checksumSha256 String
+  uploadedById   String
+  createdAt      DateTime  @default(now())
+  archivedAt     DateTime?
+
+  @@index([ownerType, ownerId, createdAt])
+  @@index([uploadedById, createdAt])
+}

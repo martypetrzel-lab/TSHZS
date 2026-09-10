@@ -53,13 +53,23 @@ Seed vytváří pouze HZS ČEPRO, stanici Mstětice, strom základních kategori
 
 Testy systému pravidel ověřují volbu nejkratšího závazného termínu, budoucí a expirovaná pravidla, kalendářní měsíce a přestupný rok. Stejné kontroly běží v GitHub Actions.
 
-## Docker a Railway
+## Produkční nasazení na Railway
 
-Docker image používá samostatné produkční sestavení Next.js. Na Railway připojte PostgreSQL, nastavte proměnné z `.env.example`, jako start použijte Dockerfile a před spuštěním nové verze proveďte `npm run db:deploy`. Railway předává `PORT`; Next.js jej respektuje. Health check nastavte na `/api/health`.
+Railway je hlavní cílové prostředí. Připojte repozitář `martypetrzel-lab/TSHZS`, nastavte produkční větev `main` a do stejného Railway projektu přidejte PostgreSQL. Do webové služby předejte `DATABASE_URL` referencí na proměnnou PostgreSQL služby; produkční start odmítne adresu mířící na `localhost`.
+
+Soubor `railway.json` vybírá kořenový vícefázový `Dockerfile`, nastavuje `/api/health`, migrace `npm run db:deploy` jako samostatný pre-deploy krok a restart pouze při selhání. Když migrace skončí nenulovým kódem, nová verze se nespustí. Health endpoint ověřuje spojení s databází, vrací pouze `ok` nebo `unavailable` a necacheuje se.
+
+Railway předává `PORT` automaticky. Standalone Next.js server jej čte za běhu a poslouchá na `0.0.0.0`; Dockerfile proto produkční port nepřepisuje. Start používá exec-form `CMD`, takže Node běží jako PID 1 a dostane `SIGTERM` přímo. Next.js při SIGTERM dokončí rozpracované požadavky. V Railway Variables nastavte `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30`, aby před případným SIGKILL dostal doporučené okno pro korektní ukončení.
+
+Produkční image neobsahuje vývojové nástroje. Prisma CLI je záměrně produkční závislost, protože ho samostatný Railway pre-deploy kontejner potřebuje pro `prisma migrate deploy`. Docker Compose slouží pouze k místnímu vývoji a pro Railway není potřeba.
 
 ## Soubory a objektové úložiště
 
-Vývoj používá adresář `storage`, který se necommitne. Produkce má používat privátní S3 kompatibilní bucket. Do PostgreSQL patří pouze metadata a klíče objektů, nikdy fotografie nebo PDF jako base64. Stažení musí vždy projít kontrolou oprávnění.
+Storage vrstva v `src/lib/storage` má shodné rozhraní pro lokální disk a S3. Vývoj používá `STORAGE_PROVIDER=local` a adresář `storage`, který se necommitne. Produkce vyžaduje `STORAGE_PROVIDER=s3`; jinou hodnotu aplikace při startu odmítne.
+
+V Railway vytvořte privátní Bucket a jeho credentials předejte pomocí Variable References do `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID` a `S3_SECRET_ACCESS_KEY`. Nové Railway Buckety používají virtual-hosted URL, proto ponechte `S3_FORCE_PATH_STYLE=false`; u staršího bucketu použijte hodnotu z jeho Credentials panelu. Stahování probíhá přes krátkodobé podepsané URL.
+
+Tabulka `Attachment` ukládá pouze název, MIME, velikost, storage key, SHA-256 checksum, typ a ID navázaného objektu, autora uploadu a čas. Fotografie ani PDF se jako base64 do PostgreSQL neukládají.
 
 ## Import Excelu
 
