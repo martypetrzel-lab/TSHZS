@@ -297,7 +297,7 @@ async function seedCeproMethodology() {
       { name },
     );
     const detailed = CEPRO_DETAILED_CHECKLISTS[key];
-    const versionNumber = detailed ? 2 : 1;
+    const versionNumber = key === "general-ts" ? 3 : detailed ? 2 : 1;
     const version = await db.checklistTemplateVersion.upsert({
       where: {
         templateId_version: { templateId: template.id, version: versionNumber },

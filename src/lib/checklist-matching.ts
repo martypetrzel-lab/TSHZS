@@ -1,4 +1,5 @@
 import { isExternalInspection } from "../../prisma/checklist-mapping.mjs";
+export { isExternalInspection } from "../../prisma/checklist-mapping.mjs";
 
 export function selectUnambiguousRule<
   T extends {

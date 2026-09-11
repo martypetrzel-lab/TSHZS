@@ -14,6 +14,7 @@ import {
   type ChecklistAnswer,
 } from "@/lib/inspection-records";
 import { getStorage } from "@/lib/storage";
+import { resolveInspectionChecklist } from "@/lib/inspection-checklist";
 
 const detailInclude = {
   equipment: { include: { vehicle: true, location: true, category: true } },
@@ -36,14 +37,12 @@ function assertAuthorized(
 ) {
   const roles = new Set(user.roles.map((r) => r.role.code));
   const professional = levelFor(requirement.performedBy) === "PROFESSIONAL";
-  if (
-    professional &&
-    !["ADMIN", "TS_ADMIN", "TECHNICIAN"].some((r) => roles.has(r))
-  )
+  if (professional && !["TS_ADMIN", "TECHNICIAN"].some((r) => roles.has(r)))
     throw new Error("Odbornou kontrolu smí provést pouze oprávněný technik.");
-  const external = /extern|výrobce|servisní organizace|revizní technik/i.test(
-    requirement.performedBy ?? "",
-  );
+  const external =
+    /extern|výrobce|servisní organizace|revizní technik|odborně způsobilá osoba/i.test(
+      requirement.performedBy ?? "",
+    );
   if (external)
     throw new Error(
       "Tuto povinnost provádí externí odborný subjekt a nelze ji uzavřít jako vlastní kontrolu.",
@@ -71,8 +70,6 @@ async function loadRequirement(id: string) {
     requirement.type !== "INSPECTION"
   )
     throw new Error("Kontrolní povinnost neexistuje nebo není aktivní.");
-  if (!requirement.ruleVersion?.checklistTemplateVersionId)
-    throw new Error("Pro tuto povinnost není vytvořena kontrolní šablona.");
   return requirement;
 }
 
@@ -87,6 +84,9 @@ export async function startInspection(formData: FormData) {
   try {
     const requirement = await loadRequirement(requirementId);
     assertAuthorized(user, requirement);
+    const resolvedChecklist = await resolveInspectionChecklist(
+      requirement.ruleVersion?.checklistTemplateVersionId,
+    );
     const existing = await prisma.inspection.findFirst({
       where: {
         inspectorId: user.id,
@@ -103,8 +103,7 @@ export async function startInspection(formData: FormData) {
           equipmentId: requirement.equipmentId,
           requirementId,
           inspectorId: user.id,
-          checklistVersionId:
-            requirement.ruleVersion!.checklistTemplateVersionId!,
+          checklistVersionId: resolvedChecklist.checklistVersionId,
           inspectionType: requirement.name,
           level: levelFor(requirement.performedBy),
           identityVerifiedAt: new Date(),
@@ -116,7 +115,11 @@ export async function startInspection(formData: FormData) {
           action: "INSPECTION_STARTED",
           entityType: "Inspection",
           entityId: created.id,
-          newValue: { equipmentId: requirement.equipmentId, requirementId },
+          newValue: {
+            equipmentId: requirement.equipmentId,
+            requirementId,
+            fallbackChecklist: resolvedChecklist.fallback,
+          },
         },
       });
       return created;
@@ -336,6 +339,10 @@ export async function closeInspection(formData: FormData) {
       throw new Error("Před uzavřením potvrďte správnost provedené kontroly.");
     await persistDraft(draftId, user.id, formData, false);
     const draft = await draftContext(draftId, user.id);
+    if (!draft.identityVerifiedAt)
+      throw new Error(
+        "Před uzavřením je nutné ověřit identifikaci prostředku.",
+      );
     assertAuthorized(user, draft.requirement!);
     const responseAttachments = await prisma.attachment.findMany({
       where: {
@@ -513,7 +520,25 @@ export async function closeInspection(formData: FormData) {
           limitationReason: limitationReason || null,
           note: String(formData.get("note") ?? "") || null,
           nextDueAt: nextDueAt?.toISOString() ?? null,
+          previousDueAt: draft.requirement!.nextDueAt?.toISOString() ?? null,
         },
+        defects: answers
+          .filter(
+            (answer) =>
+              isFailedAnswer(answer) &&
+              (answer.failCreatesDefect ||
+                answer.critical ||
+                formData.get(`createDefect-${answer.id}`) === "on"),
+          )
+          .map((answer) => ({
+            checklistItemId: answer.id,
+            label: answer.label,
+            description:
+              answer.reason || `Nevyhovující kontrolní bod: ${answer.label}`,
+            severity: answer.critical
+              ? "CRITICAL"
+              : String(formData.get(`severity-${answer.id}`) ?? "SIGNIFICANT"),
+          })),
       };
       await tx.inspection.update({
         where: { id: draft.id },
@@ -567,7 +592,10 @@ export async function closeInspection(formData: FormData) {
       });
       const failed = answers.filter(isFailedAnswer);
       for (const answer of failed.filter(
-        (a) => a.failCreatesDefect || a.critical,
+        (a) =>
+          a.failCreatesDefect ||
+          a.critical ||
+          formData.get(`createDefect-${a.id}`) === "on",
       ))
         await tx.defect.create({
           data: {
@@ -577,7 +605,13 @@ export async function closeInspection(formData: FormData) {
             reportedById: user.id,
             description:
               answer.reason || `Nevyhovující kontrolní bod: ${answer.label}`,
-            severity: answer.critical ? "CRITICAL" : "SIGNIFICANT",
+            severity: answer.critical
+              ? "CRITICAL"
+              : ((["MINOR", "SIGNIFICANT", "CRITICAL"].includes(
+                  String(formData.get(`severity-${answer.id}`)),
+                )
+                  ? String(formData.get(`severity-${answer.id}`))
+                  : "SIGNIFICANT") as "MINOR" | "SIGNIFICANT" | "CRITICAL"),
           },
         });
       if (blocked) {
@@ -597,6 +631,11 @@ export async function closeInspection(formData: FormData) {
             status: "OUT_OF_SERVICE",
             complianceStatus: "OVERDUE_BLOCKED",
           },
+        });
+      } else {
+        await tx.equipmentItem.update({
+          where: { id: equipment.id },
+          data: { complianceStatus: "COMPLIANT" },
         });
       }
       await tx.auditLog.create({
@@ -638,7 +677,7 @@ export async function closeInspection(formData: FormData) {
     revalidatePath("/kontroly");
     revalidatePath("/protokoly");
     revalidatePath(`/prostredky/${draft.equipmentId}`);
-    redirect(`/kontroly/${draft.id}`);
+    redirect(`/kontroly/${draft.id}/dokonceno`);
   } catch (error) {
     if (error && typeof error === "object" && "digest" in error) throw error;
     console.error("Uzavření kontroly selhalo", {

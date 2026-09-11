@@ -1,4 +1,5 @@
-const externalProvider = /extern|výrobce|servisní organizace|revizní technik/i;
+const externalProvider =
+  /extern|výrobce|servisní organizace|revizní technik|odborně způsobilá osoba/i;
 
 export function checklistKeyForRule({ targetKey, name, performedBy, type }) {
   if (type !== "INSPECTION" || externalProvider.test(performedBy ?? ""))

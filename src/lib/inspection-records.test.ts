@@ -16,6 +16,7 @@ import {
   ruleVersionStrategy,
 } from "../../prisma/checklist-mapping.mjs";
 import { selectUnambiguousRule } from "./checklist-matching";
+import { chooseInspectionChecklist } from "./inspection-checklist-choice";
 
 describe("uzavření kontrolního checklistu", () => {
   it("odmítne nevyplněný povinný bod", () =>
@@ -108,6 +109,18 @@ describe("termíny a neměnnost", () => {
 });
 
 describe("konkrétní metodické checklisty", () => {
+  it("základní formulář pokrývá bezpečné minimum kontroly", () =>
+    expect(
+      CEPRO_DETAILED_CHECKLISTS["general-ts"].map(
+        (s: { title: string }) => s.title,
+      ),
+    ).toEqual([
+      "Identifikace",
+      "Vizuální kontrola",
+      "Funkční kontrola",
+      "Dokumentace",
+      "Celkové posouzení",
+    ]));
   it("žebřík obsahuje prohlídku, funkčnost a identifikaci", () =>
     expect(
       CEPRO_DETAILED_CHECKLISTS.ladder.map((s: { title: string }) => s.title),
@@ -144,6 +157,16 @@ describe("konkrétní metodické checklisty", () => {
 });
 
 describe("mapování povinností na checklisty", () => {
+  it("upřednostní specializovaný checklist před základním", () =>
+    expect(chooseInspectionChecklist("ladder-v1", "general-v3")).toEqual({
+      checklistVersionId: "ladder-v1",
+      fallback: false,
+    }));
+  it("bez specializovaného checklistu bezpečně použije základní", () =>
+    expect(chooseInspectionChecklist(null, "general-v3")).toEqual({
+      checklistVersionId: "general-v3",
+      fallback: true,
+    }));
   it("novému žebříku přiřadí ladder checklist", () =>
     expect(
       checklistKeyForRule({

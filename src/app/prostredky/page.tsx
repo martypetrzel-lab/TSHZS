@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canEditEquipment } from "@/lib/permissions";
+import { isExternalInspection } from "@/lib/checklist-matching";
 const labels: Record<string, string> = {
   IN_SERVICE: "V provozu",
   OUT_OF_SERVICE: "Mimo provoz",
@@ -112,6 +113,12 @@ export default async function Page({
     pages = Math.max(1, Math.ceil(total / 25)),
     base = Object.fromEntries(Object.entries(q).filter(([, v]) => v));
   const canEdit = canEditEquipment(user.roles.map(({ role }) => role.code));
+  const roleCodes = new Set(user.roles.map(({ role }) => role.code));
+  const canPerformRequirement = (performedBy: string | null) =>
+    !isExternalInspection(performedBy) &&
+    (performedBy?.toLocaleLowerCase("cs").includes("uživatel") ||
+      roleCodes.has("TECHNICIAN") ||
+      roleCodes.has("TS_ADMIN"));
   return (
     <AppShell userName={user.displayName}>
       <div className="content">
@@ -300,10 +307,12 @@ export default async function Page({
                           </Link>
                         )}
                         {i.requirements.some(
-                          (r) => r.type === "INSPECTION",
+                          (r) =>
+                            r.type === "INSPECTION" &&
+                            canPerformRequirement(r.performedBy),
                         ) && (
                           <Link
-                            href={`/kontroly/provest/${i.requirements.find((r) => r.type === "INSPECTION")!.id}`}
+                            href={`/kontroly/provest/${i.requirements.find((r) => r.type === "INSPECTION" && canPerformRequirement(r.performedBy))!.id}`}
                           >
                             Provést kontrolu
                           </Link>

@@ -12,6 +12,7 @@ type Item = {
   naRequiresReason: boolean;
   failRequiresNote: boolean;
   failRequiresPhoto: boolean;
+  failCreatesDefect: boolean;
   critical: boolean;
   unit: string | null;
   optionsJson: unknown;
@@ -31,6 +32,15 @@ type Props = {
     requirement: string;
     checklist: string;
     version: number;
+    fallback: boolean;
+    legacyId: string | null;
+    serialNumber: string | null;
+    registrationNumber: string | null;
+    location: string | null;
+    interval: string;
+    source: string;
+    lastCompletedAt: string;
+    nextDueAt: string;
   };
   error?: string;
 };
@@ -122,11 +132,10 @@ export function InspectionForm({
     });
   };
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (dirty) save();
-    }, 30_000);
-    return () => window.clearInterval(timer);
-  });
+    if (!dirty) return;
+    const timer = window.setTimeout(() => save(), 1_000);
+    return () => window.clearTimeout(timer);
+  }, [dirty]);
   const onChange = (event: React.ChangeEvent<HTMLFormElement>) => {
     setDirty(true);
     const target = event.target as unknown as
@@ -164,6 +173,69 @@ export function InspectionForm({
           </small>
         </div>
       </header>
+      {header.fallback && (
+        <div className="base-checklist-warning">
+          <strong>ZÁKLADNÍ KONTROLNÍ FORMULÁŘ</strong>
+          <p>
+            Pro tento typ prostředku zatím není vytvořen specializovaný
+            checklist. Používá se základní formulář kontroly. Rozsah kontroly je
+            nutné provést také podle dokumentace výrobce a platných předpisů.
+          </p>
+        </div>
+      )}
+      <section className="card inspection-equipment-summary">
+        <h2>Identifikace prostředku</h2>
+        <dl>
+          <div>
+            <dt>UID</dt>
+            <dd>{header.uid}</dd>
+          </div>
+          <div>
+            <dt>Původní ID</dt>
+            <dd>{header.legacyId ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Výrobní číslo</dt>
+            <dd>{header.serialNumber ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Evidenční číslo</dt>
+            <dd>{header.registrationNumber ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Vozidlo</dt>
+            <dd>{header.placement}</dd>
+          </div>
+          <div>
+            <dt>Umístění</dt>
+            <dd>{header.location ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Kontrola</dt>
+            <dd>{header.requirement}</dd>
+          </div>
+          <div>
+            <dt>Interval</dt>
+            <dd>{header.interval}</dd>
+          </div>
+          <div>
+            <dt>Zdroj</dt>
+            <dd>{header.source}</dd>
+          </div>
+          <div>
+            <dt>Poslední kontrola</dt>
+            <dd>{header.lastCompletedAt}</dd>
+          </div>
+          <div>
+            <dt>Další termín</dt>
+            <dd>{header.nextDueAt}</dd>
+          </div>
+        </dl>
+        <label className="confirm-check verified">
+          <input type="checkbox" checked readOnly /> Ověřil jsem shodu
+          prostředku podle UID, evidenčního nebo výrobního čísla.
+        </label>
+      </section>
       {(error || message) && (
         <div
           className={error ? "error import-error" : "card save-message"}
@@ -174,8 +246,12 @@ export function InspectionForm({
       )}
       <div className="inspection-progress">
         <div>
-          <strong>{percent} %</strong>
-          <span>{required.length - completed} povinných bodů zbývá</span>
+          <strong>
+            Průběh kontroly: {completed} / {required.length} položek
+          </strong>
+          <span>
+            {percent} % · povinné nevyplněné: {required.length - completed}
+          </span>
         </div>
         <progress max="100" value={percent} />
       </div>
@@ -237,7 +313,7 @@ export function InspectionForm({
             computed === "NEVYHOVUJE" ? "result-failed" : "result-passed"
           }
         >
-          {computed}
+          {computed === "NEVYHOVUJE" ? "✕" : "✓"} {computed}
         </strong>
         <dl>
           <div>
@@ -268,7 +344,9 @@ export function InspectionForm({
       </section>
       <div className="inspection-sticky">
         <div>
-          <strong>{percent} %</strong>
+          <strong>
+            Dokončeno: {completed} / {required.length}
+          </strong>
           <span>
             {pending ? "Ukládám…" : dirty ? "Neuložené změny" : "Uloženo"}
           </span>
@@ -298,6 +376,21 @@ function ChecklistControl({
   initial?: { value?: unknown; state?: string; reason?: string };
   value: string;
 }) {
+  const limits = item.optionsJson as {
+    min?: number;
+    max?: number;
+    targetMin?: number;
+  } | null;
+  const limitText =
+    limits?.targetMin != null
+      ? `min. ${limits.targetMin} ${item.unit ?? ""}`
+      : limits?.min != null && limits?.max != null
+        ? `${limits.min} až ${limits.max} ${item.unit ?? ""}`
+        : limits?.min != null
+          ? `min. ${limits.min} ${item.unit ?? ""}`
+          : limits?.max != null
+            ? `max. ${limits.max} ${item.unit ?? ""}`
+            : null;
   const common = {
     name: `answer-${item.id}`,
     defaultValue: String(initial?.value ?? ""),
@@ -361,6 +454,7 @@ function ChecklistControl({
             step="any"
           />
           <span>{item.unit}</span>
+          {limitText && <small>Požadavek: {limitText}</small>}
         </div>
       )}
       {item.responseType === "TEXTAREA" && <textarea {...common} />}
@@ -415,6 +509,32 @@ function ChecklistControl({
             multiple
           />
         </label>
+      )}
+      {value === "NEVYHOVUJE" && (
+        <div className="defect-choice">
+          <label>
+            <input
+              type="checkbox"
+              name={`createDefect-${item.id}`}
+              defaultChecked={item.failCreatesDefect || item.critical}
+              disabled={item.failCreatesDefect || item.critical}
+            />
+            {item.failCreatesDefect || item.critical
+              ? " Závada bude vytvořena povinně"
+              : " Vytvořit závadu"}
+          </label>
+          <select
+            name={`severity-${item.id}`}
+            defaultValue={item.critical ? "CRITICAL" : "SIGNIFICANT"}
+          >
+            <option value="MINOR">Drobná</option>
+            <option value="SIGNIFICANT">Významná</option>
+            <option value="CRITICAL">Kritická</option>
+          </select>
+          {(item.failCreatesDefect || item.critical) && (
+            <input type="hidden" name={`createDefect-${item.id}`} value="on" />
+          )}
+        </div>
       )}
     </div>
   );

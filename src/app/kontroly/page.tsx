@@ -6,6 +6,7 @@ import {
   saveShiftInspection,
 } from "@/app/actions/inspection";
 import { requireUser } from "@/lib/auth";
+import { isExternalInspection } from "@/lib/checklist-matching";
 
 export const dynamic = "force-dynamic";
 const resultCs = {
@@ -50,7 +51,7 @@ export default async function Page({
   const tab = q.tab ?? "k-provedeni";
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const due = await prisma.equipmentRequirement.findMany({
+  const dueAll = await prisma.equipmentRequirement.findMany({
     where: {
       archivedAt: null,
       type: "INSPECTION",
@@ -64,6 +65,9 @@ export default async function Page({
     },
     orderBy: { nextDueAt: "asc" },
   });
+  const due = dueAll.filter(
+    (requirement) => !isExternalInspection(requirement.performedBy),
+  );
   const drafts = await prisma.inspection.findMany({
     where: {
       state: "DRAFT",

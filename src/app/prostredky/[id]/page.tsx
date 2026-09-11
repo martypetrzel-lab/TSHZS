@@ -12,6 +12,7 @@ import { AppShell } from "@/components/app-shell";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canEditEquipment } from "@/lib/permissions";
+import { isExternalInspection } from "@/lib/checklist-matching";
 import { recordOperatingHours } from "@/app/actions/operating-log";
 export const dynamic = "force-dynamic";
 const statuses: Record<string, string> = {
@@ -88,6 +89,15 @@ export default async function EquipmentDetail({
   const next = item.requirements[0];
   const today = new Date();
   const canEdit = canEditEquipment(user.roles.map(({ role }) => role.code));
+  const userRoleCodes = new Set(user.roles.map(({ role }) => role.code));
+  const actionableInspections = item.requirements.filter(
+    (r) =>
+      r.type === "INSPECTION" &&
+      !isExternalInspection(r.performedBy) &&
+      (r.performedBy?.toLocaleLowerCase("cs").includes("uživatel") ||
+        userRoleCodes.has("TECHNICIAN") ||
+        userRoleCodes.has("TS_ADMIN")),
+  );
   return (
     <AppShell userName={user.displayName}>
       <div className="content">
@@ -101,13 +111,12 @@ export default async function EquipmentDetail({
             </p>
           </div>
           <div className="page-actions">
-            {item.requirements.some((r) => r.type === "INSPECTION") && (
+            {actionableInspections.length > 0 && (
               <Link
                 className="button"
                 href={
-                  item.requirements.filter((r) => r.type === "INSPECTION")
-                    .length === 1
-                    ? `/kontroly/provest/${item.requirements.find((r) => r.type === "INSPECTION")!.id}`
+                  actionableInspections.length === 1
+                    ? `/kontroly/provest/${actionableInspections[0].id}`
                     : `/kontroly/provest?hledat=${encodeURIComponent(item.uid)}`
                 }
               >
@@ -492,13 +501,19 @@ export default async function EquipmentDetail({
                       </td>
                       <td>
                         <div className="requirement-actions">
-                          <Link
-                            href={`${requirement.type === "REVISION" ? "/revize" : "/kontroly"}?equipmentId=${item.id}&requirementId=${requirement.id}`}
-                          >
-                            {requirement.type === "REVISION"
-                              ? "Zadat revizi"
-                              : "Provést kontrolu"}
-                          </Link>
+                          {requirement.type === "REVISION" ? (
+                            <Link
+                              href={`/revize?equipmentId=${item.id}&requirementId=${requirement.id}`}
+                            >
+                              Zadat revizi
+                            </Link>
+                          ) : !isExternalInspection(requirement.performedBy) ? (
+                            <Link href={`/kontroly/provest/${requirement.id}`}>
+                              Provést kontrolu
+                            </Link>
+                          ) : (
+                            <span>Provádí externí odborná osoba</span>
+                          )}
                           <Link
                             href={`/prostredky/${item.id}/upravit#povinnosti`}
                           >

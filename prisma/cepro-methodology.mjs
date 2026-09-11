@@ -727,20 +727,34 @@ export const CEPRO_DETAILED_CHECKLISTS = {
     ),
   ],
   "general-ts": [
+    section("Identifikace", [
+      pf("Shoda identifikace prostředku", { critical: true }),
+    ]),
     section(
-      "Obecná odborná kontrola",
+      "Vizuální kontrola",
       [
-        "Identifikace prostředku",
-        "Celistvost",
-        "Úplnost",
+        "Celistvost prostředku",
+        "Úplnost prostředku",
         "Viditelné poškození",
-        "Funkčnost",
-        "Označení",
-      ]
-        .map((x) => pf(x))
-        .concat([
-          { label: "Poznámka", responseType: "TEXTAREA", required: false },
-        ]),
+        "Stav označení",
+        "Stav příslušenství",
+      ].map((x) => pf(x)),
     ),
+    section(
+      "Funkční kontrola",
+      ["Základní funkčnost", "Ovládací prvky", "Mechanický stav"].map((x) =>
+        pf(x),
+      ),
+    ),
+    section("Dokumentace", [
+      pf("Dokumentace / označení bez zjevného problému"),
+    ]),
+    section("Celkové posouzení", [
+      {
+        label: "Další zjištění / poznámka",
+        responseType: "TEXTAREA",
+        required: false,
+      },
+    ]),
   ],
 };
