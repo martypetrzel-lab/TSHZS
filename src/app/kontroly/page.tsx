@@ -2,9 +2,10 @@ import Link from "next/link";
 import { ModulePage } from "@/components/module-page";
 import { prisma } from "@/lib/prisma";
 import {
-  cancelInspection,
   saveShiftInspection,
 } from "@/app/actions/inspection";
+import { CancelInspectionDialog, DeleteDraftButton } from "@/components/inspection-actions";
+import { historyYear } from "@/lib/inspection-lifecycle";
 import { requireUser } from "@/lib/auth";
 import { canUserPerformInspection } from "@/lib/inspection-permissions";
 
@@ -76,12 +77,22 @@ export default async function Page({
     include: { equipment: true, requirement: true },
     orderBy: { startedAt: "desc" },
   });
-  const history = await prisma.inspection.findMany({
-    where: { state: { not: "DRAFT" } },
+  const allHistory = await prisma.inspection.findMany({
+    where: { state: { in: ["CLOSED", "CORRECTED", "CANCELLED"] } },
     include: { equipment: true, requirement: true, protocol: true },
     orderBy: { completedAt: "desc" },
     take: 150,
   });
+  const history = allHistory.filter((entry) =>
+    entry.state !== "CANCELLED" || (canManageDrafts && q.stornovane === "1"),
+  );
+  const currentYear = now.getFullYear();
+  const yearCounts = new Map<number, number>();
+  for (const entry of allHistory)
+    if (entry.state === "CLOSED" && !entry.protocol?.cancelledAt && entry.protocol)
+      yearCounts.set(historyYear(entry.protocol), (yearCounts.get(historyYear(entry.protocol)) ?? 0) + 1);
+  const years = [...new Set([currentYear, currentYear + 1, ...yearCounts.keys()])].sort((a, b) => a - b);
+  const selectedYear = q.rok === "vse" ? null : Number(q.rok ?? currentYear);
   const users = await prisma.user.findMany({
     where: {
       id: {
@@ -96,13 +107,16 @@ export default async function Page({
       `${i.equipment.name} ${i.equipment.uid} ${i.equipment.legacyId ?? ""} ${i.equipment.serialNumber ?? ""}`.toLocaleLowerCase(
         "cs",
       );
-    const completed = i.completedAt?.getTime() ?? 0;
+    const protocolDate = i.protocol?.protocolDate ?? i.completedAt ?? i.protocol?.createdAt ?? new Date(0);
+    const performed = i.performedAt ?? i.completedAt ?? new Date(0);
+    const filteredDate = q.datum === "kontroly" ? performed : protocolDate;
     return (
+      (selectedYear == null || protocolDate.getUTCFullYear() === selectedYear) &&
       (!q.hledat || text.includes(q.hledat.toLocaleLowerCase("cs"))) &&
       (!q.kontrolujici || i.inspectorId === q.kontrolujici) &&
       (!q.typ || i.requirement?.name === q.typ) &&
-      (!q.od || completed >= new Date(`${q.od}T00:00:00`).getTime()) &&
-      (!q.do || completed <= new Date(`${q.do}T23:59:59`).getTime())
+      (!q.od || filteredDate >= new Date(`${q.od}T00:00:00`)) &&
+      (!q.do || filteredDate <= new Date(`${q.do}T23:59:59`))
     );
   });
   const filteredDue = due
@@ -362,7 +376,7 @@ export default async function Page({
           <table className="table">
             <thead>
               <tr>
-                <th>Zahájeno</th>
+                <th>Naplánováno / zahájeno</th>
                 <th>Prostředek</th>
                 <th>Povinnost</th>
                 <th>Kontrolující</th>
@@ -372,7 +386,7 @@ export default async function Page({
             <tbody>
               {drafts.map((i) => (
                 <tr key={i.id}>
-                  <td>{i.startedAt.toLocaleString("cs-CZ")}</td>
+                  <td>{i.scheduledFor ? <><span className="badge">NAPLÁNOVÁNO NA {i.scheduledFor.toLocaleDateString("cs-CZ")}</span><br /></> : null}{i.startedAt.toLocaleString("cs-CZ")}</td>
                   <td>{i.equipment.name}</td>
                   <td>{i.requirement?.name ?? i.inspectionType}</td>
                   <td>{userNames.get(i.inspectorId) ?? "—"}</td>
@@ -387,21 +401,7 @@ export default async function Page({
                         </Link>
                       )}
                       {canManageDrafts && (
-                        <form action={cancelInspection}>
-                          <input
-                            type="hidden"
-                            name="inspectionId"
-                            value={i.id}
-                          />
-                          <input
-                            type="hidden"
-                            name="reason"
-                            value="Zrušeno správcem z přehledu rozpracovaných kontrol"
-                          />
-                          <button className="button secondary">
-                            Zrušit draft
-                          </button>
-                        </form>
+                        <DeleteDraftButton inspectionId={i.id} />
                       )}
                     </div>
                   </td>
@@ -413,8 +413,13 @@ export default async function Page({
       )}
       {tab === "historie" && (
         <>
+          <nav className="inspection-tabs" aria-label="Rok historie">
+            {years.map((year) => <Link className={selectedYear === year ? "active" : ""} href={`/kontroly?tab=historie&rok=${year}`} key={year}>{year} ({yearCounts.get(year) ?? 0})</Link>)}
+            <Link className={selectedYear == null ? "active" : ""} href="/kontroly?tab=historie&rok=vse">Vše</Link>
+          </nav>
           <form className="card inspection-filters">
             <input type="hidden" name="tab" value="historie" />
+            <input type="hidden" name="rok" value={q.rok ?? currentYear} />
             <input
               name="hledat"
               defaultValue={q.hledat}
@@ -428,15 +433,21 @@ export default async function Page({
                 </option>
               ))}
             </select>
+            <select name="datum" defaultValue={q.datum ?? "protokolu"}>
+              <option value="protokolu">Filtrovat podle data protokolu</option>
+              <option value="kontroly">Filtrovat podle data kontroly</option>
+            </select>
             <input type="date" name="od" defaultValue={q.od} />
             <input type="date" name="do" defaultValue={q.do} />
+            {canManageDrafts && <label className="confirm-check"><input type="checkbox" name="stornovane" value="1" defaultChecked={q.stornovane === "1"} /> Zobrazit stornované</label>}
             <button className="button">Filtrovat historii</button>
           </form>
           <div className="card table-wrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th>Datum a čas</th>
+                  <th>Datum kontroly</th>
+                  <th>Datum protokolu</th>
                   <th>Prostředek</th>
                   <th>UID</th>
                   <th>Povinnost</th>
@@ -448,14 +459,15 @@ export default async function Page({
               </thead>
               <tbody>
                 {filteredHistory.map((i) => (
-                  <tr key={i.id}>
-                    <td>{i.completedAt?.toLocaleString("cs-CZ") ?? "—"}</td>
+                  <tr key={i.id} className={i.state === "CANCELLED" ? "cancelled-record" : ""}>
+                    <td>{(i.performedAt ?? i.completedAt)?.toLocaleDateString("cs-CZ") ?? "—"}</td>
+                    <td>{(i.protocol?.protocolDate ?? i.protocol?.createdAt)?.toLocaleDateString("cs-CZ") ?? "—"}</td>
                     <td>{i.equipment.name}</td>
                     <td>{i.equipment.uid}</td>
                     <td>{i.requirement?.name ?? i.inspectionType}</td>
                     <td>{userNames.get(i.inspectorId) ?? "—"}</td>
                     <td>{i.result ? resultCs[i.result] : "—"}</td>
-                    <td>{i.protocol?.number ?? "—"}</td>
+                    <td>{i.protocol?.number ?? "—"}{i.state === "CANCELLED" && <><br /><span className="badge">STORNOVÁNO</span></>}</td>
                     <td>
                       <div className="row-actions">
                         <Link
@@ -472,6 +484,8 @@ export default async function Page({
                             PDF
                           </a>
                         )}
+                        {i.state === "CLOSED" && canManageDrafts && <CancelInspectionDialog inspection={{ id: i.id, equipment: i.equipment.name, uid: i.equipment.uid, performed: (i.performedAt ?? i.completedAt)?.toLocaleDateString("cs-CZ") ?? "—", result: i.result ? resultCs[i.result] : "—", protocol: i.protocol?.number ?? "—", inspector: userNames.get(i.inspectorId) ?? "—" }} />}
+                        {i.state === "CANCELLED" && <span title={i.cancellationReason ?? ""}>Důvod storna: {i.cancellationReason ?? "—"}</span>}
                       </div>
                     </td>
                   </tr>

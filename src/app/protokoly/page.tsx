@@ -18,13 +18,14 @@ export default async function Page() {
                 <th>Protokol</th>
                 <th>Prostředek</th>
                 <th>Zdroj</th>
+                <th>Datum protokolu</th>
                 <th>Dokument</th>
               </tr>
             </thead>
             <tbody>
               {protocols.map((p) => (
                 <tr key={p.id}>
-                  <td>{p.number}</td>
+                  <td>{p.number}{p.cancelledAt && <><br /><span className="badge">STORNOVÁNO</span></>}</td>
                   <td>
                     {p.equipment ? (
                       <Link href={`/prostredky/${p.equipment.id}`}>
@@ -35,6 +36,7 @@ export default async function Page() {
                     )}
                   </td>
                   <td>{p.legacyImported ? "Původní evidence" : "TSHZS"}</td>
+                  <td>{(p.protocolDate ?? p.createdAt).toLocaleDateString("cs-CZ")}</td>
                   <td>
                     {p.inspectionId ? (
                       <span className="row-actions">

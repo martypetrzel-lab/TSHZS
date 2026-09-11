@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { cancelInspection, startCorrection } from "@/app/actions/inspection";
+import { startCorrection } from "@/app/actions/inspection";
 import { ModulePage } from "@/components/module-page";
 import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/auth";
+import { CancelInspectionDialog } from "@/components/inspection-actions";
 
 export const dynamic = "force-dynamic";
 const resultCs: Record<string, string> = {
@@ -37,6 +39,9 @@ export default async function Page({
   params: Promise<{ inspectionId: string }>;
 }) {
   const { inspectionId } = await params;
+  const user = await requireUser();
+  const roleCodes = new Set(user.roles.map((entry) => entry.role.code));
+  const canManage = roleCodes.has("ADMIN") || roleCodes.has("TS_ADMIN");
   const inspection = await prisma.inspection.findUnique({
     where: { id: inspectionId },
     include: {
@@ -100,8 +105,20 @@ export default async function Page({
             <dd>{String(i.inspector ?? "—")}</dd>
           </div>
           <div>
-            <dt>Datum a čas</dt>
+            <dt>Kontrola provedena</dt>
+            <dd>{(inspection.performedAt ?? inspection.completedAt)?.toLocaleDateString("cs-CZ") ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Protokol ze dne</dt>
+            <dd>{(inspection.protocol?.protocolDate ?? inspection.protocol?.createdAt)?.toLocaleDateString("cs-CZ") ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Do systému vloženo</dt>
             <dd>{inspection.completedAt?.toLocaleString("cs-CZ") ?? "—"}</dd>
+          </div>
+          <div>
+            <dt>Vložil</dt>
+            <dd>{String(i.insertedBy ?? i.inspector ?? "—")}</dd>
           </div>
           <div>
             <dt>Stav</dt>
@@ -118,7 +135,7 @@ export default async function Page({
       {inspection.state === "CANCELLED" && (
         <div className="card cancelled-record">
           <strong>Záznam byl stornován.</strong>
-          <p>{inspection.correctionReason}</p>
+          <p>{inspection.cancellationReason ?? inspection.correctionReason}</p>
         </div>
       )}
       <div className="protocol-columns">
@@ -197,15 +214,7 @@ export default async function Page({
           ))}
         </div>
       )}
-      {inspection.state === "CLOSED" && (
-        <form action={cancelInspection} className="card cancel-form">
-          <h2>Storno záznamu</h2>
-          <p>Původní obsah zůstane dohledatelný.</p>
-          <input type="hidden" name="inspectionId" value={inspection.id} />
-          <input name="reason" required placeholder="Povinný důvod storna" />
-          <button className="button secondary">Vytvořit storno</button>
-        </form>
-      )}
+      {inspection.state === "CLOSED" && canManage && <div className="card cancel-form"><h2>Storno záznamu</h2><p>Původní obsah, číslo i PDF zůstanou dohledatelné.</p><CancelInspectionDialog inspection={{ id: inspection.id, equipment: String(e.name ?? "—"), uid: String(e.uid ?? "—"), performed: (inspection.performedAt ?? inspection.completedAt)?.toLocaleDateString("cs-CZ") ?? "—", result: resultCs[inspection.result ?? ""] ?? "—", protocol: inspection.protocol?.number ?? "—", inspector: String(i.inspector ?? "—") }} /></div>}
       {inspection.state === "CLOSED" && inspection.requirementId && (
         <form action={startCorrection} className="card cancel-form">
           <h2>Opravná kontrola</h2>

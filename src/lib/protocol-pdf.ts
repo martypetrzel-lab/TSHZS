@@ -38,6 +38,8 @@ export type ProtocolSnapshot = {
   inspection?: {
     inspector?: unknown;
     completedAt?: unknown;
+    performedAt?: unknown;
+    protocolDate?: unknown;
     result?: unknown;
     limitationReason?: unknown;
     note?: unknown;
@@ -344,7 +346,8 @@ export async function renderProtocolPdf(input: {
         requirement.intervalUnit,
       ),
     ],
-    ["Datum provedení", formatProtocolDate(inspection.completedAt)],
+    ["Datum provedení kontroly", formatProtocolDate(inspection.performedAt ?? inspection.completedAt)],
+    ["Datum protokolu", formatProtocolDate(inspection.protocolDate ?? inspection.completedAt)],
     ["Další termín", formatProtocolDate(inspection.nextDueAt)],
     ["Zdroj požadavku", text(requirement.sourceDocument ?? requirement.source)],
     ["Článek metodiky", text(requirement.article)],
@@ -514,7 +517,7 @@ export async function renderProtocolPdf(input: {
     font: bold,
     color: gray,
   });
-  page.drawText(formatProtocolDate(inspection.completedAt, true), {
+  page.drawText(formatProtocolDate(inspection.protocolDate ?? inspection.completedAt, true), {
     x: MARGIN + 5,
     y: y - 60,
     size: 10,

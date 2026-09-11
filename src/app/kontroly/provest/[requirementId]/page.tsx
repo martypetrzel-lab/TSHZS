@@ -10,6 +10,7 @@ import {
   canUserPerformInspection,
   inspectionPerformedBy,
 } from "@/lib/inspection-permissions";
+import { canUseHistoricalDates, todayDateKey } from "@/lib/inspection-lifecycle";
 
 export const dynamic = "force-dynamic";
 
@@ -71,7 +72,11 @@ export default async function Page({
     },
     orderBy: { startedAt: "desc" },
   });
-  const draftId = q.draft ?? existing?.id;
+  const requestedDraft = q.draft
+    ? await prisma.inspection.findFirst({ where: { id: q.draft, inspectorId: user.id, requirementId, state: "DRAFT" } })
+    : null;
+  const draftCandidate = requestedDraft ?? existing;
+  const draftId = draftCandidate?.identityVerifiedAt ? draftCandidate.id : undefined;
   if (!draftId)
     return (
       <ModulePage eyebrow="Kontroly · krok 2 z 3" title="Ověření prostředku">
@@ -131,6 +136,14 @@ export default async function Page({
           {q.chyba && <div className="error">{q.chyba}</div>}
           <form action={startInspection}>
             <input type="hidden" name="requirementId" value={requirement.id} />
+            <label className="field">
+              <span>Plánované datum kontroly</span>
+              <input type="date" name="scheduledFor" required defaultValue={draftCandidate?.scheduledFor?.toISOString().slice(0, 10) ?? todayDateKey()} />
+            </label>
+            <label className="field">
+              <span>Poznámka k plánování</span>
+              <textarea name="note" defaultValue={draftCandidate?.note ?? ""} />
+            </label>
             <label className="confirm-check">
               <input type="checkbox" name="identityVerified" required /> Byla
               ověřena shoda evidenčního nebo výrobního čísla s dokumentací
@@ -175,6 +188,10 @@ export default async function Page({
       allowLimitation={draft.checklistVersion.allowPassedWithLimitation}
       nonCriticalFailureResult={draft.checklistVersion.nonCriticalFailureResult}
       error={q.chyba}
+      scheduledFor={draft.scheduledFor?.toISOString().slice(0, 10) ?? todayDateKey()}
+      initialNote={draft.note ?? ""}
+      canUseHistoricalDates={canUseHistoricalDates(user.roles.map((entry) => entry.role.code))}
+      today={todayDateKey()}
       header={{
         name: requirement.equipment.name,
         uid: requirement.equipment.uid,

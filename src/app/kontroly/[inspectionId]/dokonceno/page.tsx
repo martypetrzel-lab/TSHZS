@@ -50,8 +50,12 @@ export default async function Page({
             <dd>{snapshot.inspection?.inspector ?? "—"}</dd>
           </div>
           <div>
-            <dt>Datum</dt>
-            <dd>{inspection.completedAt.toLocaleString("cs-CZ")}</dd>
+            <dt>Datum provedení kontroly</dt>
+            <dd>{(inspection.performedAt ?? inspection.completedAt).toLocaleDateString("cs-CZ")}</dd>
+          </div>
+          <div>
+            <dt>Datum protokolu</dt>
+            <dd>{(inspection.protocol.protocolDate ?? inspection.protocol.createdAt).toLocaleDateString("cs-CZ")}</dd>
           </div>
           <div>
             <dt>Protokol</dt>

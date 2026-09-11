@@ -110,6 +110,11 @@ export default async function EquipmentDetail({
           </div>
           <div className="page-actions">
             {actionableInspections.length > 0 && (
+              <Link className="button secondary" href={`/kontroly/naplanovat/${item.id}`}>
+                Naplánovat kontrolu
+              </Link>
+            )}
+            {actionableInspections.length > 0 && (
               <Link
                 className="button"
                 href={

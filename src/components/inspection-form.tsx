@@ -44,6 +44,10 @@ type Props = {
     nextDueAt: string;
   };
   error?: string;
+  scheduledFor: string;
+  initialNote: string;
+  canUseHistoricalDates: boolean;
+  today: string;
 };
 
 function clientFailed(item: Item, value: string) {
@@ -77,6 +81,10 @@ export function InspectionForm({
   nonCriticalFailureResult,
   header,
   error,
+  scheduledFor,
+  initialNote,
+  canUseHistoricalDates,
+  today,
 }: Props) {
   const formRef = useRef<HTMLFormElement>(null);
   const [dirty, setDirty] = useState(false);
@@ -312,8 +320,19 @@ export function InspectionForm({
       )}
       <label className="card field">
         <span>Celková poznámka</span>
-        <textarea name="note" />
+        <textarea name="note" defaultValue={initialNote} />
       </label>
+      <section className="card protocol-columns">
+        <label className="field">
+          <span>Datum provedení kontroly</span>
+          <input type="date" name="performedAt" required defaultValue={scheduledFor} />
+          {!canUseHistoricalDates && <small>Běžný technik může kontrolu uzavřít pouze s dnešním datem.</small>}
+        </label>
+        {canUseHistoricalDates && <>
+          <label className="field"><span>Datum protokolu</span><input type="date" name="protocolDate" required defaultValue={today} /></label>
+          <label className="field"><span>Důvod výjimky, pokud datum protokolu předchází kontrole</span><input name="protocolDateExceptionReason" /></label>
+        </>}
+      </section>
       <section className="card inspection-summary">
         <h2>Vypočtený výsledek</h2>
         <strong
@@ -343,7 +362,7 @@ export function InspectionForm({
         </dl>
         <label className="confirm-check">
           <input type="checkbox" name="confirmed" required /> Potvrzuji, že jsem
-          kontrolu provedl/a a uvedené údaje odpovídají skutečnosti.
+          uvedená kontrola byla skutečně provedena v uvedeném datu a údaje odpovídají skutečnosti.
         </label>
         <small>
           Potvrzení je evidováno v aplikaci; nejde o kvalifikovaný elektronický

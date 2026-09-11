@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 import { requireInspectionOperator } from "@/lib/authorization";
 import { prisma } from "@/lib/prisma";
-import { addCalendarInterval, nextOperatingThreshold } from "@/lib/rule-engine";
+import { nextOperatingThreshold } from "@/lib/rule-engine";
 import {
   calculateInspectionResult,
   isFailedAnswer,
@@ -16,6 +16,15 @@ import {
 import { getStorage } from "@/lib/storage";
 import { resolveInspectionChecklist } from "@/lib/inspection-checklist";
 import { canUserPerformInspection } from "@/lib/inspection-permissions";
+import {
+  canUseHistoricalDates,
+  dateKey,
+  nextDueFromPerformedAt,
+  parseDateOnly,
+  protocolCounterKey,
+  todayDateKey,
+  restoreRequirementFromValidInspections,
+} from "@/lib/inspection-lifecycle";
 
 const detailInclude = {
   equipment: { include: { vehicle: true, location: true, category: true } },
@@ -60,6 +69,11 @@ export async function startInspection(formData: FormData) {
   const user = await requireInspectionOperator();
   const requirementId = String(formData.get("requirementId") ?? "");
   const identityVerified = formData.get("identityVerified") === "on";
+  const scheduledFor = parseDateOnly(
+    formData.get("scheduledFor") || todayDateKey(),
+    "Plánované datum kontroly",
+  );
+  const note = String(formData.get("note") ?? "").trim();
   if (!identityVerified)
     redirect(
       `/kontroly/provest/${requirementId}?chyba=${encodeURIComponent("Nejprve potvrďte ověření identifikace prostředku.")}`,
@@ -78,8 +92,16 @@ export async function startInspection(formData: FormData) {
         state: "DRAFT",
       },
     });
-    if (existing)
+    if (existing) {
+      await prisma.$transaction(async (tx) => {
+        await tx.inspection.update({
+          where: { id: existing.id },
+          data: { identityVerifiedAt: new Date(), scheduledFor, note: note || existing.note },
+        });
+        await tx.auditLog.create({ data: { userId: user.id, action: "INSPECTION_STARTED", entityType: "Inspection", entityId: existing.id, newValue: { identityVerifiedAt: new Date().toISOString() } } });
+      });
       redirect(`/kontroly/provest/${requirementId}?draft=${existing.id}`);
+    }
     const draft = await prisma.$transaction(async (tx) => {
       const created = await tx.inspection.create({
         data: {
@@ -90,6 +112,8 @@ export async function startInspection(formData: FormData) {
           inspectionType: requirement.name,
           level: levelFor(requirement.performedBy),
           identityVerifiedAt: new Date(),
+          scheduledFor,
+          note: note || null,
         },
       });
       await tx.auditLog.create({
@@ -102,7 +126,17 @@ export async function startInspection(formData: FormData) {
             equipmentId: requirement.equipmentId,
             requirementId,
             fallbackChecklist: resolvedChecklist.fallback,
+            scheduledFor: scheduledFor.toISOString(),
           },
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          action: "INSPECTION_SCHEDULED",
+          entityType: "Inspection",
+          entityId: created.id,
+          newValue: { scheduledFor: scheduledFor.toISOString(), note: note || null },
         },
       });
       return created;
@@ -327,6 +361,29 @@ export async function closeInspection(formData: FormData) {
         "Před uzavřením je nutné ověřit identifikaci prostředku.",
       );
     assertAuthorized(user, draft.requirement!);
+    const roles = user.roles.map((entry) => entry.role.code);
+    const elevatedDates = canUseHistoricalDates(roles);
+    const today = todayDateKey();
+    const performedAt = parseDateOnly(
+      formData.get("performedAt") || today,
+      "Datum provedení kontroly",
+    );
+    if (dateKey(performedAt) > today)
+      throw new Error("Kontrolu s budoucím datem nelze uzavřít. Ponechte ji naplánovanou.");
+    if (!elevatedDates && dateKey(performedAt) !== today)
+      throw new Error("Technik může bez zvláštního oprávnění uzavřít kontrolu pouze s dnešním datem.");
+    const protocolDate = elevatedDates
+      ? parseDateOnly(formData.get("protocolDate") || today, "Datum protokolu")
+      : parseDateOnly(today, "Datum protokolu");
+    if (dateKey(protocolDate) > today)
+      throw new Error("Datum protokolu nesmí být v budoucnosti.");
+    const protocolDateExceptionReason = String(
+      formData.get("protocolDateExceptionReason") ?? "",
+    ).trim();
+    if (protocolDate < performedAt && !elevatedDates)
+      throw new Error("Datum protokolu nesmí předcházet datu provedení kontroly.");
+    if (protocolDate < performedAt && !protocolDateExceptionReason)
+      throw new Error("U dřívějšího data protokolu je povinný důvod výjimky.");
     const responseAttachments = await prisma.attachment.findMany({
       where: {
         ownerType: "InspectionResponse",
@@ -397,11 +454,13 @@ export async function closeInspection(formData: FormData) {
     ) {
       const unit = draft.requirement!.intervalUnit;
       if (unit && ["DAYS", "WEEKS", "MONTHS", "YEARS"].includes(unit))
-        nextDueAt = addCalendarInterval(
-          now,
-          draft.requirement!.intervalValue,
-          unit as "DAYS" | "WEEKS" | "MONTHS" | "YEARS",
-        );
+        nextDueAt = nextDueFromPerformedAt({
+          performedAt,
+          intervalValue: draft.requirement!.intervalValue,
+          intervalUnit: unit,
+          result,
+          trigger: draft.requirement!.trigger,
+        });
       else if (unit === "OPERATING_HOURS")
         nextOperatingHours = nextOperatingThreshold(
           Number(draft.requirement!.equipment.currentOperatingHours ?? 0),
@@ -421,13 +480,14 @@ export async function closeInspection(formData: FormData) {
           result,
           completedAt: now,
           confirmedAt: now,
+          performedAt,
           limitationReason: limitationReason || null,
           lockVersion: { increment: 1 },
         },
       });
       if (!claimed.count)
         return tx.protocol.findUnique({ where: { inspectionId: draftId } });
-      const key = `TS-MST-${now.getFullYear()}`;
+      const key = protocolCounterKey(protocolDate);
       const counter = await tx.protocolCounter.upsert({
         where: { key },
         create: { key, currentValue: 1 },
@@ -499,6 +559,10 @@ export async function closeInspection(formData: FormData) {
           inspector: user.displayName,
           startedAt: draft.startedAt.toISOString(),
           completedAt: now.toISOString(),
+          performedAt: performedAt.toISOString(),
+          protocolDate: protocolDate.toISOString(),
+          insertedAt: now.toISOString(),
+          insertedBy: user.displayName,
           result,
           limitationReason: limitationReason || null,
           note: String(formData.get("note") ?? "") || null,
@@ -533,6 +597,7 @@ export async function closeInspection(formData: FormData) {
           number,
           inspectionId: draft.id,
           equipmentId: equipment.id,
+          protocolDate,
           snapshot: snapshot as Prisma.InputJsonValue,
           rules: draft.requirement!.ruleVersionId
             ? {
@@ -553,7 +618,7 @@ export async function closeInspection(formData: FormData) {
       await tx.equipmentRequirementHistory.create({
         data: {
           requirementId: draft.requirement!.id,
-          lastCompletedAt: now,
+          lastCompletedAt: performedAt,
           nextDueAt,
           intervalValue: draft.requirement!.intervalValue,
           intervalUnit: draft.requirement!.intervalUnit,
@@ -566,7 +631,7 @@ export async function closeInspection(formData: FormData) {
       await tx.equipmentRequirement.update({
         where: { id: draft.requirement!.id },
         data: {
-          lastCompletedAt: now,
+          lastCompletedAt: performedAt,
           nextDueAt,
           nextOperatingHours,
           nextUsageCount,
@@ -633,9 +698,34 @@ export async function closeInspection(formData: FormData) {
             protocolId: protocol.id,
             result,
             timestamp: now.toISOString(),
+            performedAt: performedAt.toISOString(),
+            protocolDate: protocolDate.toISOString(),
           },
         },
       });
+      if (draft.scheduledFor && dateKey(draft.scheduledFor) !== dateKey(performedAt))
+        await tx.auditLog.create({
+          data: {
+            userId: user.id,
+            action: "INSPECTION_PERFORMED_DATE_CHANGED",
+            entityType: "Inspection",
+            entityId: draft.id,
+            previousValue: { performedAt: draft.scheduledFor.toISOString() },
+            newValue: { performedAt: performedAt.toISOString() },
+          },
+        });
+      if (dateKey(protocolDate) !== today || protocolDate < performedAt)
+        await tx.auditLog.create({
+          data: {
+            userId: user.id,
+            action: "PROTOCOL_DATE_CHANGED",
+            entityType: "Protocol",
+            entityId: protocol.id,
+            previousValue: { protocolDate: today },
+            newValue: { protocolDate: dateKey(protocolDate) },
+            reason: protocolDateExceptionReason || null,
+          },
+        });
       if (draft.correctionOfId) {
         await tx.inspection.update({
           where: { id: draft.correctionOfId },
@@ -682,44 +772,146 @@ export async function cancelInspection(formData: FormData) {
   const user = await requireInspectionOperator();
   const inspectionId = String(formData.get("inspectionId") ?? "");
   const reason = String(formData.get("reason") ?? "").trim();
-  if (!reason) return;
+  if (!reason) throw new Error("Důvod storna je povinný.");
   const inspection = await prisma.inspection.findUnique({
     where: { id: inspectionId },
   });
   if (!inspection) return;
   const roles = new Set(user.roles.map((r) => r.role.code));
-  if (
-    inspection.inspectorId !== user.id &&
-    !roles.has("ADMIN") &&
-    !roles.has("TS_ADMIN")
-  )
-    return;
-  await prisma.$transaction([
-    prisma.inspection.update({
+  if (!roles.has("ADMIN") && !roles.has("TS_ADMIN"))
+    throw new Error("Stornovat uzavřenou kontrolu může pouze správce.");
+  if (inspection.state !== "CLOSED")
+    throw new Error("Stornovat lze pouze uzavřenou kontrolu.");
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    await tx.inspection.update({
       where: { id: inspectionId },
       data: {
         state: "CANCELLED",
-        correctionReason: reason,
-        cancelledAt: new Date(),
+        cancellationReason: reason,
+        cancelledAt: now,
         cancelledById: user.id,
       },
-    }),
-    prisma.protocol.updateMany({
+    });
+    await tx.protocol.updateMany({
       where: { inspectionId },
-      data: { cancelledAt: new Date(), cancellationReason: reason },
-    }),
-    prisma.auditLog.create({
+      data: { cancelledAt: now, cancelledById: user.id, cancellationReason: reason },
+    });
+    if (inspection.requirementId) {
+      const valid = await tx.inspection.findMany({
+        where: { requirementId: inspection.requirementId, state: "CLOSED", id: { not: inspectionId } },
+        select: { performedAt: true, completedAt: true, result: true, snapshot: true },
+      });
+      const restored = restoreRequirementFromValidInspections(valid.map((entry) => ({
+        performedAt: entry.performedAt,
+        completedAt: entry.completedAt,
+        result: entry.result,
+        nextDueAt: ((entry.snapshot as { inspection?: { nextDueAt?: string | null } } | null)?.inspection?.nextDueAt ?? null),
+      })));
+      const restoredLast = restored.lastCompletedAt;
+      const restoredNext = restored.nextDueAt;
+      const restoredStatus = restored.status;
+      await tx.equipmentRequirement.update({
+        where: { id: inspection.requirementId },
+        data: { lastCompletedAt: restoredLast, nextDueAt: restoredNext, status: restoredStatus },
+      });
+      await tx.equipmentRequirementHistory.create({
+        data: {
+          requirementId: inspection.requirementId,
+          lastCompletedAt: restoredLast,
+          nextDueAt: restoredNext,
+          status: restoredStatus,
+          note: `Přepočet po stornu kontroly ${inspectionId}`,
+          recordedById: user.id,
+        },
+      });
+      const activeRequirements = await tx.equipmentRequirement.findMany({
+        where: { equipmentId: inspection.equipmentId, archivedAt: null },
+        select: { status: true, lastCompletedAt: true, nextDueAt: true },
+      });
+      const equipmentCompliance = activeRequirements.some((entry) => entry.status === "OVERDUE_BLOCKED")
+        ? "OVERDUE_BLOCKED"
+        : activeRequirements.some((entry) => entry.status === "DUE_SOON")
+          ? "DUE_SOON"
+          : activeRequirements.some((entry) => entry.lastCompletedAt || entry.nextDueAt)
+            ? "COMPLIANT"
+            : "UNDEFINED";
+      await tx.equipmentItem.update({ where: { id: inspection.equipmentId }, data: { complianceStatus: equipmentCompliance } });
+    }
+    await tx.auditLog.create({
       data: {
         userId: user.id,
         action: "INSPECTION_CANCELLED",
         entityType: "Inspection",
         entityId: inspectionId,
         reason,
+        previousValue: { state: inspection.state },
+        newValue: { state: "CANCELLED", cancelledAt: now.toISOString() },
       },
-    }),
-  ]);
+    });
+  });
   revalidatePath("/kontroly");
   revalidatePath(`/kontroly/${inspectionId}`);
+}
+
+export async function deleteInspectionDraft(formData: FormData) {
+  const user = await requireInspectionOperator();
+  const roles = new Set(user.roles.map((entry) => entry.role.code));
+  if (!roles.has("ADMIN") && !roles.has("TS_ADMIN"))
+    throw new Error("Odstranit rozpracovanou kontrolu může pouze správce.");
+  const inspectionId = String(formData.get("inspectionId") ?? "");
+  await prisma.$transaction(async (tx) => {
+    const draft = await tx.inspection.findUnique({
+      where: { id: inspectionId },
+      include: { responses: { select: { id: true } }, protocol: true },
+    });
+    if (!draft || draft.state !== "DRAFT" || draft.protocol)
+      throw new Error("Fyzicky odstranit lze pouze draft bez protokolu.");
+    const responseIds = draft.responses.map((response) => response.id);
+    if (responseIds.length)
+      await tx.attachment.deleteMany({ where: { ownerType: "InspectionResponse", ownerId: { in: responseIds } } });
+    await tx.inspectionResponse.deleteMany({ where: { inspectionId } });
+    await tx.inspection.delete({ where: { id: inspectionId } });
+    await tx.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "INSPECTION_DRAFT_DELETED",
+        entityType: "Inspection",
+        entityId: inspectionId,
+        previousValue: { equipmentId: draft.equipmentId, requirementId: draft.requirementId, scheduledFor: draft.scheduledFor?.toISOString() },
+      },
+    });
+  });
+  revalidatePath("/kontroly");
+}
+
+export async function scheduleInspection(formData: FormData) {
+  const user = await requireInspectionOperator();
+  const requirementId = String(formData.get("requirementId") ?? "");
+  const requirement = await loadRequirement(requirementId);
+  assertAuthorized(user, requirement);
+  const scheduledFor = parseDateOnly(formData.get("scheduledFor"), "Plánované datum kontroly");
+  const note = String(formData.get("note") ?? "").trim();
+  const resolved = await resolveInspectionChecklist(requirement.ruleVersion?.checklistTemplateVersionId);
+  const draft = await prisma.$transaction(async (tx) => {
+    const created = await tx.inspection.create({
+      data: {
+        equipmentId: requirement.equipmentId,
+        requirementId,
+        inspectorId: user.id,
+        checklistVersionId: resolved.checklistVersionId,
+        inspectionType: requirement.name,
+        level: levelFor(requirement.performedBy),
+        scheduledFor,
+        note: note || null,
+      },
+    });
+    await tx.auditLog.create({ data: { userId: user.id, action: "INSPECTION_SCHEDULED", entityType: "Inspection", entityId: created.id, newValue: { scheduledFor: scheduledFor.toISOString(), note: note || null } } });
+    return created;
+  });
+  revalidatePath("/kontroly");
+  revalidatePath("/kalendar");
+  redirect(`/kontroly?tab=rozpracovane&naplanovano=${draft.id}`);
 }
 
 export async function saveShiftInspection(formData: FormData) {

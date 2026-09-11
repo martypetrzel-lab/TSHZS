@@ -635,6 +635,8 @@ model Inspection {
   state              InspectionState          @default(DRAFT)
   result             InspectionResult?
   startedAt          DateTime                 @default(now())
+  scheduledFor       DateTime?
+  performedAt        DateTime?
   completedAt        DateTime?
   note               String?
   correctionOfId     String?
@@ -644,6 +646,7 @@ model Inspection {
   limitationReason   String?
   cancelledAt        DateTime?
   cancelledById      String?
+  cancellationReason String?
   lockVersion        Int                      @default(0)
   snapshot           Json?
   equipment          EquipmentItem            @relation(fields: [equipmentId], references: [id])
@@ -657,6 +660,7 @@ model Inspection {
   operatingLogs      EquipmentOperatingLog[]
 
   @@index([requirementId, completedAt])
+  @@index([scheduledFor, state])
 }
 
 model EquipmentMeterReading {
@@ -713,7 +717,9 @@ model Protocol {
   legacyImported     Boolean                @default(false)
   importJobId        String?
   createdAt          DateTime               @default(now())
+  protocolDate       DateTime?
   cancelledAt        DateTime?
+  cancelledById      String?
   cancellationReason String?
   correctionOfId     String?
   inspection         Inspection?            @relation(fields: [inspectionId], references: [id])
@@ -723,6 +729,7 @@ model Protocol {
   rules              ProtocolRuleSnapshot[]
 
   @@index([equipmentId, createdAt])
+  @@index([protocolDate, cancelledAt])
   @@index([importJobId])
   @@index([correctionOfId])
 }
