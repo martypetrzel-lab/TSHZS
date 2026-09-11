@@ -592,6 +592,64 @@ a {
   color: var(--muted, #52606d);
   line-height: 1.5;
 }
+
+.user-page-actions {
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+.role-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.role-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  background: #e6eef5;
+  color: #183b56;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+.user-editor,
+.qualification-panel {
+  max-width: 58rem;
+  margin-bottom: 1rem;
+}
+.role-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+}
+.role-picker legend {
+  padding: 0 0.4rem;
+  font-weight: 800;
+}
+.role-picker label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+.role-picker input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-top: 0.15rem;
+}
+.role-picker span,
+.role-picker small {
+  display: block;
+}
+@media (max-width: 640px) {
+  .role-picker {
+    grid-template-columns: 1fr;
+  }
+}
 .base-checklist-warning p {
   margin: 0.35rem 0 0;
 }

@@ -11,6 +11,16 @@ export async function requireImportAdministrator() {
   return user;
 }
 
+export async function requireSystemAdministrator() {
+  const user = await requireUser();
+  const roles = new Set(user.roles.map(({ role }) => role.code));
+  if (!roles.has("ADMIN"))
+    redirect(
+      "/administrace?chyba=Správa uživatelů je dostupná pouze administrátorům.",
+    );
+  return user;
+}
+
 export async function requireEquipmentEditor() {
   const user = await requireUser();
   const roles = new Set(user.roles.map(({ role }) => role.code));

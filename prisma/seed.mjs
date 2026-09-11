@@ -1,5 +1,5 @@
-import { hash } from "bcryptjs";
 import { PrismaClient, RuleSourceType } from "@prisma/client";
+import { seedInitialAdmin } from "./initial-admin.mjs";
 import {
   CEPRO_CHECKLISTS,
   CEPRO_DETAILED_CHECKLISTS,
@@ -539,52 +539,10 @@ async function reconcileChecklistLinks(desiredVersions) {
   }
 }
 
-async function seedInitialAdmin(organizationId) {
-  const username = process.env.INITIAL_ADMIN_USERNAME?.trim();
-  const password = process.env.INITIAL_ADMIN_PASSWORD;
-  if (!username || !password) {
-    console.info(
-      "Počáteční administrátor se nevytváří; inicializační proměnné nejsou nastavené.",
-    );
-    return;
-  }
-  const existing = await db.user.findUnique({ where: { username } });
-  if (existing) {
-    console.info(
-      "Počáteční administrátor již existuje; heslo ani role se nemění.",
-    );
-    return;
-  }
-  const adminRole = await db.role.findUniqueOrThrow({
-    where: { code: "ADMIN" },
-  });
-  const passwordHash = await hash(password, 12);
-  try {
-    await db.user.create({
-      data: {
-        username,
-        displayName: "Administrátor",
-        passwordHash,
-        organizationId,
-        roles: { create: { roleId: adminRole.id } },
-      },
-    });
-    console.info("Počáteční administrátor byl vytvořen.");
-  } catch (error) {
-    if (error?.code === "P2002") {
-      console.info(
-        "Počáteční administrátor již existuje; heslo ani role se nemění.",
-      );
-      return;
-    }
-    throw error;
-  }
-}
-
 async function main() {
   console.info("=== TSHZS SEED START ===");
   const organization = await seedMasterData();
-  await seedInitialAdmin(organization.id);
+  await seedInitialAdmin(db, organization.id);
   console.info("=== TSHZS SEED DONE ===");
 }
 

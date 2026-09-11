@@ -266,6 +266,27 @@ describe("oprávnění k provedení kontroly", () => {
   );
   it("nepovažuje samotnou roli ADMIN za odbornou kvalifikaci", () =>
     expect(canUserPerformInspection(user("ADMIN"), legacy)).toBe(false));
+  it("povolí odbornou kontrolu kombinaci ADMIN a TS_ADMIN", () =>
+    expect(
+      canUserPerformInspection(
+        { roles: ["ADMIN", "TS_ADMIN"].map((code) => ({ role: { code } })) },
+        { performedBy: "technik TS", ruleVersion: null },
+      ),
+    ).toBe(true));
+  it("povolí odbornou kontrolu technikovi", () =>
+    expect(
+      canUserPerformInspection(user("TECHNICIAN"), {
+        performedBy: "technik TS",
+        ruleVersion: null,
+      }),
+    ).toBe(true));
+  it("nepovolí odbornou kontrolu běžnému uživateli", () =>
+    expect(
+      canUserPerformInspection(user("USER"), {
+        performedBy: "technik TS",
+        ruleVersion: null,
+      }),
+    ).toBe(false));
   it("povolí uživatelskou kontrolu běžnému uživateli", () =>
     expect(
       canUserPerformInspection(user("USER"), {
@@ -290,5 +311,12 @@ describe("oprávnění k provedení kontroly", () => {
           qualificationId: null,
         },
       }),
+    ).toBe(false));
+  it("blokuje externí kontrolu i kombinaci ADMIN a TS_ADMIN", () =>
+    expect(
+      canUserPerformInspection(
+        { roles: ["ADMIN", "TS_ADMIN"].map((code) => ({ role: { code } })) },
+        { performedBy: "externí servis", ruleVersion: null },
+      ),
     ).toBe(false));
 });
