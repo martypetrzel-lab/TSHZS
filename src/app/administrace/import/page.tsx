@@ -1,4 +1,5 @@
 import { FileSpreadsheet, UploadCloud } from "lucide-react";
+import Link from "next/link";
 import { analyzeImport } from "@/app/actions/import";
 import { AppShell } from "@/components/app-shell";
 import { requireImportAdministrator } from "@/lib/authorization";
@@ -23,6 +24,16 @@ export default async function ImportPage({
           </div>
         </div>
         {chyba && <div className="error import-error">{chyba}</div>}
+        <div className="import-kind-grid">
+          <div className="card import-kind active">
+            <strong>Tabulková evidence kontrol</strong>
+            <span>Kontrola 1, protokoly a termíny</span>
+          </div>
+          <Link className="card import-kind" href="/administrace/import/karty">
+            <strong>Karty prostředků / pasporty</strong>
+            <span>Jeden list představuje jednu kartu →</span>
+          </Link>
+        </div>
         <section className="card import-card">
           <div className="import-step">
             <span>1</span>

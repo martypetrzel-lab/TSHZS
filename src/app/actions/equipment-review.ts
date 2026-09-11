@@ -25,11 +25,23 @@ const types = [
   "LIFETIME",
   "EXPIRATION",
 ] as const;
-const units = ["DAYS", "WEEKS", "MONTHS", "YEARS", "OPERATING_HOURS", "USAGE_COUNT"] as const;
+const units = [
+  "DAYS",
+  "WEEKS",
+  "MONTHS",
+  "YEARS",
+  "OPERATING_HOURS",
+  "USAGE_COUNT",
+] as const;
 const itemSchema = z.object({
   equipmentId: z.string().min(1),
   name: z.string().trim().min(2),
   legacyId: z.string().trim().optional(),
+  legacyIdentificationNumber: z.string().trim().optional(),
+  material: z.string().trim().optional(),
+  technicalDescription: z.string().trim().optional(),
+  assignedUserId: z.string().trim().optional(),
+  assignedPersonText: z.string().trim().optional(),
   categoryId: z.string().min(1),
   manufacturer: z.string().trim().optional(),
   model: z.string().trim().optional(),
@@ -93,6 +105,10 @@ export async function updateEquipmentReview(formData: FormData) {
     const previous = {
       name: item.name,
       legacyId: item.legacyId,
+      legacyIdentificationNumber: item.legacyIdentificationNumber,
+      material: item.material,
+      technicalDescription: item.technicalDescription,
+      assignedUserId: item.assignedUserId,
       categoryId: item.categoryId,
       manufacturer: item.manufacturer,
       model: item.model,
@@ -113,6 +129,11 @@ export async function updateEquipmentReview(formData: FormData) {
     const data = {
       name: parsed.data.name,
       legacyId: empty(parsed.data.legacyId),
+      legacyIdentificationNumber: empty(parsed.data.legacyIdentificationNumber),
+      material: empty(parsed.data.material),
+      technicalDescription: empty(parsed.data.technicalDescription),
+      assignedUserId: empty(parsed.data.assignedUserId),
+      assignedPersonText: empty(parsed.data.assignedPersonText),
       categoryId: parsed.data.categoryId,
       manufacturer: empty(parsed.data.manufacturer),
       model: empty(parsed.data.model),

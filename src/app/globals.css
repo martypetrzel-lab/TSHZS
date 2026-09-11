@@ -911,32 +911,299 @@ a {
   background: #fff7ed;
   color: #7c2d12;
 }
-.methodology-head { padding: 22px; display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px; margin-bottom: 16px; }
-.methodology-head p { margin-bottom: 0; color: var(--muted); }
-.methodology-head dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.methodology-head dt { color: var(--muted); font-size: .78rem; text-transform: uppercase; }
-.methodology-head dd { margin: 3px 0 0; font-weight: 700; }
-.comparison-list { display: grid; gap: 14px; }
-.comparison-card { padding: 20px; }
-.comparison-card .section-head span { display: block; margin-top: 4px; color: var(--muted); }
-.comparison-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 14px 0; }
-.comparison-columns > div { padding: 14px; background: #f8fafc; border-radius: 8px; }
-.comparison-columns h3 { margin-top: 0; font-size: .9rem; text-transform: uppercase; }
-.comparison-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.comparison-actions input { flex: 1 1 240px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; }
-.data-check-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.data-check-list { margin-top: 18px; padding-bottom: 8px; }
-.operating-card { margin: 18px 0; }
-.operating-form { display: grid; grid-template-columns: repeat(3,1fr) auto; gap: 10px; padding: 16px 20px; }
-.operating-form label { display: grid; gap: 5px; font-size: .82rem; font-weight: 700; }
-.operating-form input { border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px; }
-.inspection-form { margin-bottom: 18px; }
-.inspection-form fieldset { margin: 16px 20px; border: 1px solid var(--line); border-radius: 9px; padding: 16px; }
-.inspection-form legend { padding: 0 8px; font-weight: 800; }
-.inspection-item { display: grid; grid-template-columns: minmax(240px,1fr) minmax(180px,.5fr); gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
-.inspection-item label { display: grid; gap: 6px; }
-.inspection-item input, .inspection-item select { border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px; }
-.inspection-result { padding: 0 20px; }
+.methodology-head {
+  padding: 22px;
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+.methodology-head p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+.methodology-head dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.methodology-head dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+.methodology-head dd {
+  margin: 3px 0 0;
+  font-weight: 700;
+}
+.comparison-list {
+  display: grid;
+  gap: 14px;
+}
+.comparison-card {
+  padding: 20px;
+}
+.comparison-card .section-head span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+.comparison-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin: 14px 0;
+}
+.comparison-columns > div {
+  padding: 14px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+.comparison-columns h3 {
+  margin-top: 0;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+}
+.comparison-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.comparison-actions input {
+  flex: 1 1 240px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px;
+}
+.data-check-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.data-check-list {
+  margin-top: 18px;
+  padding-bottom: 8px;
+}
+.operating-card {
+  margin: 18px 0;
+}
+.operating-form {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr) auto;
+  gap: 10px;
+  padding: 16px 20px;
+}
+.operating-form label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.operating-form input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 9px;
+}
+.inspection-form {
+  margin-bottom: 18px;
+}
+.inspection-form fieldset {
+  margin: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 16px;
+}
+.inspection-form legend {
+  padding: 0 8px;
+  font-weight: 800;
+}
+.inspection-item {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(180px, 0.5fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.inspection-item label {
+  display: grid;
+  gap: 6px;
+}
+.inspection-item input,
+.inspection-item select {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 9px;
+}
+.inspection-result {
+  padding: 0 20px;
+}
+.import-kind-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+  max-width: 900px;
+}
+.import-kind {
+  padding: 16px;
+  display: grid;
+  gap: 5px;
+}
+.import-kind span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+.import-kind.active {
+  border-color: var(--red);
+}
+.card-list {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.passport-preview {
+  padding: 20px;
+}
+.passport-preview .section-head > div span {
+  display: block;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.passport-fields,
+.technical-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.passport-fields div,
+.technical-grid div {
+  padding: 10px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+.passport-fields dt,
+.technical-grid dt {
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+.passport-fields dd,
+.technical-grid dd {
+  margin: 4px 0 0;
+  font-weight: 700;
+}
+.conflict-box {
+  border-left: 4px solid #d97706;
+  background: #fff7ed;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+.conflict-box label {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+}
+.conflict-box small {
+  display: block;
+  color: #9a3412;
+  margin-top: 3px;
+}
+.passport-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.passport-counts span {
+  background: #e5e7eb;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 0.78rem;
+}
+.unknown-card-rows {
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+}
+.unknown-card-rows summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.unknown-card-rows div {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 10px;
+  padding-top: 8px;
+  font-size: 0.85rem;
+}
+.equipment-tabs {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  position: sticky;
+  top: 6px;
+  z-index: 4;
+}
+.equipment-tabs a {
+  white-space: nowrap;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 0.83rem;
+  font-weight: 700;
+}
+.equipment-tabs a:hover {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.equipment-technical,
+.equipment-records {
+  margin: 18px 0;
+  scroll-margin-top: 72px;
+}
+.technical-grid {
+  padding: 18px 20px;
+}
+.technical-description {
+  margin: 0 20px 18px;
+  padding: 12px;
+  background: #f8fafc;
+}
+.specification-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 20px 20px;
+}
+.specification-grid div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.specification-grid span,
+.specification-grid small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.defect-record {
+  display: grid;
+  gap: 5px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.defect-record span,
+.defect-record small {
+  color: var(--muted);
+}
 .sr-only {
   position: absolute;
   width: 1px;
@@ -982,8 +1249,23 @@ a {
     margin: 6px 0 0;
     width: max-content;
   }
-  .methodology-head, .comparison-columns { grid-template-columns: 1fr; }
-  .data-check-grid { grid-template-columns: 1fr 1fr; }
-  .operating-form { grid-template-columns: 1fr; }
-  .inspection-item { grid-template-columns: 1fr; }
+  .methodology-head,
+  .comparison-columns {
+    grid-template-columns: 1fr;
+  }
+  .data-check-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .operating-form {
+    grid-template-columns: 1fr;
+  }
+  .inspection-item {
+    grid-template-columns: 1fr;
+  }
+  .import-kind-grid,
+  .passport-fields,
+  .technical-grid,
+  .specification-grid {
+    grid-template-columns: 1fr;
+  }
 }

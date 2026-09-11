@@ -36,7 +36,7 @@ export default async function Page({
   const user = await requireEquipmentEditor();
   const { id } = await params;
   const { chyba } = await searchParams;
-  const [item, categories, locations, vehicles] = await Promise.all([
+  const [item, categories, locations, vehicles, users] = await Promise.all([
     prisma.equipmentItem.findUnique({
       where: { id },
       include: {
@@ -60,6 +60,11 @@ export default async function Page({
     prisma.vehicle.findMany({
       where: { archivedAt: null },
       orderBy: { name: "asc" },
+    }),
+    prisma.user.findMany({
+      where: { active: true, organizationId: user.organizationId },
+      orderBy: { displayName: "asc" },
+      select: { id: true, displayName: true },
     }),
   ]);
   if (!item) notFound();
@@ -100,6 +105,13 @@ export default async function Page({
                 <input name="legacyId" defaultValue={item.legacyId ?? ""} />
               </div>
               <div className="field">
+                <label>Původní identifikační číslo karty</label>
+                <input
+                  name="legacyIdentificationNumber"
+                  defaultValue={item.legacyIdentificationNumber ?? ""}
+                />
+              </div>
+              <div className="field">
                 <label>Evidenční číslo</label>
                 <input
                   name="registrationNumber"
@@ -127,6 +139,38 @@ export default async function Page({
               <div className="field">
                 <label>Typ prostředku</label>
                 <input name="typeName" defaultValue={item.typeName ?? ""} />
+              </div>
+              <div className="field">
+                <label>Materiál</label>
+                <input name="material" defaultValue={item.material ?? ""} />
+              </div>
+              <div className="field">
+                <label>Osobní přidělení</label>
+                <select
+                  name="assignedUserId"
+                  defaultValue={item.assignedUserId ?? ""}
+                >
+                  <option value="">Bez přiřazení</option>
+                  {users.map((person) => (
+                    <option value={person.id} key={person.id}>
+                      {person.displayName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Původní text přidělení</label>
+                <input
+                  name="assignedPersonText"
+                  defaultValue={item.assignedPersonText ?? ""}
+                />
+              </div>
+              <div className="field full">
+                <label>Technický popis</label>
+                <textarea
+                  name="technicalDescription"
+                  defaultValue={item.technicalDescription ?? ""}
+                />
               </div>
             </div>
           </section>

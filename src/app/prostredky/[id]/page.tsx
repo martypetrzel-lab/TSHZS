@@ -39,6 +39,13 @@ export default async function EquipmentDetail({
       category: true,
       location: true,
       vehicle: true,
+      assignedUser: true,
+      specifications: { orderBy: { sortOrder: "asc" } },
+      logEntries: { orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }] },
+      inspections: {
+        include: { protocol: true, requirement: true },
+        orderBy: { completedAt: "desc" },
+      },
       requirements: {
         where: { archivedAt: null },
         include: {
@@ -57,6 +64,26 @@ export default async function EquipmentDetail({
     },
   });
   if (!item) notFound();
+  const [documents, audit, defectHistory] = await Promise.all([
+    prisma.attachment.findMany({
+      where: { ownerType: "EquipmentItem", ownerId: item.id, archivedAt: null },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.auditLog.findMany({
+      where: { entityType: "EquipmentItem", entityId: item.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+    prisma.defect.findMany({
+      where: { equipmentId: item.id },
+      include: {
+        serviceCase: {
+          include: { events: { orderBy: { createdAt: "desc" } } },
+        },
+      },
+      orderBy: { foundAt: "desc" },
+    }),
+  ]);
   const blocked = item.complianceStatus === "OVERDUE_BLOCKED";
   const next = item.requirements[0];
   const today = new Date();
@@ -89,7 +116,18 @@ export default async function EquipmentDetail({
             )}
           </div>
         </div>
-        <section className="status-strip">
+        <nav className="equipment-tabs" aria-label="Sekce karty prostředku">
+          <a href="#prehled">Přehled</a>
+          <a href="#technicke-udaje">Technické údaje</a>
+          <a href="#povinnosti">Povinnosti</a>
+          <a href="#kontroly">Kontroly</a>
+          <a href="#revize">Revize</a>
+          <a href="#provozni-denik">Provozní deník</a>
+          <a href="#zavady">Závady a opravy</a>
+          <a href="#dokumenty">Dokumenty</a>
+          <a href="#historie">Historie</a>
+        </nav>
+        <section className="status-strip" id="prehled">
           <div className="status-block">
             <span>Provozuschopnost</span>
             <strong style={{ color: blocked ? "#b91c1c" : "#166534" }}>
@@ -146,7 +184,143 @@ export default async function EquipmentDetail({
             </small>
           </div>
         )}
-        {(item.currentOperatingHours !== null || item.requirements.some(r=>r.intervalUnit === "OPERATING_HOURS")) && <section className="card operating-card"><div className="panel-head"><h2>Provozní deník a motohodiny</h2><strong>{item.currentOperatingHours?.toString() ?? "0"} mh</strong></div>{canEdit&&<form action={recordOperatingHours} className="operating-form"><input type="hidden" name="equipmentId" value={item.id}/><label>Datum<input type="date" name="date" required defaultValue={new Date().toISOString().slice(0,10)}/></label><label>Stav motohodin<input type="number" min={Number(item.currentOperatingHours??0)} step="0.01" name="operatingHours" required/></label><label>Poznámka<input name="note"/></label><button className="button">Uložit odečet</button></form>}<div className="panel-body">{item.operatingLogs.map(log=><div className="history-row" key={log.id}><span>{log.date.toLocaleDateString("cs-CZ")}</span><strong>{log.operatingHours.toString()} mh</strong><span>+{log.hoursDelta.toString()} mh</span><span>{log.note??"—"}</span></div>)}</div></section>}
+        <section className="card equipment-technical" id="technicke-udaje">
+          <div className="panel-head">
+            <h2>Technické údaje</h2>
+          </div>
+          <dl className="technical-grid">
+            <div>
+              <dt>UID aplikace</dt>
+              <dd>{item.uid}</dd>
+            </div>
+            <div>
+              <dt>Původní identifikační číslo</dt>
+              <dd>{item.legacyIdentificationNumber ?? item.legacyId ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Evidenční číslo</dt>
+              <dd>{item.registrationNumber ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Výrobní číslo</dt>
+              <dd>{item.serialNumber ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Druh prostředku</dt>
+              <dd>{item.typeName ?? item.category.name}</dd>
+            </div>
+            <div>
+              <dt>Výrobce</dt>
+              <dd>{item.manufacturer ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Model / typ</dt>
+              <dd>{item.model ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Materiál</dt>
+              <dd>{item.material ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Datum výroby</dt>
+              <dd>
+                {item.manufacturedAt?.toLocaleDateString("cs-CZ") ??
+                  item.manufacturingText ??
+                  "—"}
+              </dd>
+            </div>
+            <div>
+              <dt>Datum zavedení</dt>
+              <dd>
+                {item.commissionedAt?.toLocaleDateString("cs-CZ") ??
+                  item.commissioningText ??
+                  "—"}
+              </dd>
+            </div>
+            <div>
+              <dt>Vozidlo</dt>
+              <dd>{item.vehicle?.name ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Umístění</dt>
+              <dd>{item.location?.name ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Osobní přidělení</dt>
+              <dd>
+                {item.assignedUser?.displayName ??
+                  item.assignedPersonText ??
+                  "—"}
+              </dd>
+            </div>
+          </dl>
+          {item.technicalDescription && (
+            <p className="technical-description">{item.technicalDescription}</p>
+          )}
+          <div className="specification-grid">
+            {item.specifications.map((spec) => (
+              <div key={spec.id}>
+                <span>{spec.name}</span>
+                <strong>
+                  {spec.value} {spec.unit}
+                </strong>
+                <small>{spec.source ?? "Ručně"}</small>
+              </div>
+            ))}
+          </div>
+        </section>
+        {(item.currentOperatingHours !== null ||
+          item.requirements.some(
+            (r) => r.intervalUnit === "OPERATING_HOURS",
+          )) && (
+          <section className="card operating-card">
+            <div className="panel-head">
+              <h2>Provozní deník a motohodiny</h2>
+              <strong>
+                {item.currentOperatingHours?.toString() ?? "0"} mh
+              </strong>
+            </div>
+            {canEdit && (
+              <form action={recordOperatingHours} className="operating-form">
+                <input type="hidden" name="equipmentId" value={item.id} />
+                <label>
+                  Datum
+                  <input
+                    type="date"
+                    name="date"
+                    required
+                    defaultValue={new Date().toISOString().slice(0, 10)}
+                  />
+                </label>
+                <label>
+                  Stav motohodin
+                  <input
+                    type="number"
+                    min={Number(item.currentOperatingHours ?? 0)}
+                    step="0.01"
+                    name="operatingHours"
+                    required
+                  />
+                </label>
+                <label>
+                  Poznámka
+                  <input name="note" />
+                </label>
+                <button className="button">Uložit odečet</button>
+              </form>
+            )}
+            <div className="panel-body">
+              {item.operatingLogs.map((log) => (
+                <div className="history-row" key={log.id}>
+                  <span>{log.date.toLocaleDateString("cs-CZ")}</span>
+                  <strong>{log.operatingHours.toString()} mh</strong>
+                  <span>+{log.hoursDelta.toString()} mh</span>
+                  <span>{log.note ?? "—"}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         <section className="dashboard-grid">
           <div className="card">
             <div className="panel-head">
@@ -213,7 +387,7 @@ export default async function EquipmentDetail({
             </div>
           </div>
         </section>
-        <section className="card requirement-table-card">
+        <section className="card requirement-table-card" id="povinnosti">
           <div className="panel-head">
             <h2>POVINNOSTI A TERMÍNY</h2>
           </div>
@@ -260,8 +434,8 @@ export default async function EquipmentDetail({
                         {requirement.trigger !== "PERIODIC"
                           ? "Při události"
                           : requirement.intervalValue
-                          ? `${requirement.intervalValue} ${unit}`
-                          : "—"}
+                            ? `${requirement.intervalValue} ${unit}`
+                            : "—"}
                       </td>
                       <td>
                         {requirement.lastCompletedAt?.toLocaleDateString(
@@ -270,10 +444,16 @@ export default async function EquipmentDetail({
                       </td>
                       <td>
                         {requirement.intervalUnit === "OPERATING_HOURS"
-                          ? requirement.nextOperatingHours ? `${requirement.nextOperatingHours} mh` : "Doplnit odečet"
+                          ? requirement.nextOperatingHours
+                            ? `${requirement.nextOperatingHours} mh`
+                            : "Doplnit odečet"
                           : requirement.intervalUnit === "USAGE_COUNT"
-                            ? requirement.nextUsageCount ?? "Doplnit počet"
-                            : requirement.trigger !== "PERIODIC" ? "Aktivuje událost" : requirement.nextDueAt?.toLocaleDateString("cs-CZ") ?? "—"}
+                            ? (requirement.nextUsageCount ?? "Doplnit počet")
+                            : requirement.trigger !== "PERIODIC"
+                              ? "Aktivuje událost"
+                              : (requirement.nextDueAt?.toLocaleDateString(
+                                  "cs-CZ",
+                                ) ?? "—")}
                       </td>
                       <td>
                         {remaining === null
@@ -359,12 +539,124 @@ export default async function EquipmentDetail({
             </details>
           ))}
         </section>
+        <section className="card equipment-records" id="kontroly">
+          <div className="panel-head">
+            <h2>Kontroly</h2>
+          </div>
+          <div className="panel-body">
+            {item.inspections
+              .filter((i) => i.requirement?.type !== "REVISION")
+              .map((i) => (
+                <div className="history-row" key={i.id}>
+                  <span>
+                    {i.completedAt?.toLocaleDateString("cs-CZ") ??
+                      "Rozpracováno"}
+                  </span>
+                  <strong>{i.inspectionType}</strong>
+                  <span>{i.result ?? i.state}</span>
+                  <span>{i.protocol?.number ?? "Bez protokolu"}</span>
+                </div>
+              ))}
+          </div>
+        </section>
+        <section className="card equipment-records" id="revize">
+          <div className="panel-head">
+            <h2>Revize</h2>
+          </div>
+          <div className="panel-body">
+            {item.inspections
+              .filter((i) => i.requirement?.type === "REVISION")
+              .map((i) => (
+                <div className="history-row" key={i.id}>
+                  <span>
+                    {i.completedAt?.toLocaleDateString("cs-CZ") ??
+                      "Rozpracováno"}
+                  </span>
+                  <strong>{i.inspectionType}</strong>
+                  <span>{i.result ?? i.state}</span>
+                  <span>{i.protocol?.number ?? "Bez protokolu"}</span>
+                </div>
+              ))}
+          </div>
+        </section>
+        <section className="card equipment-records" id="provozni-denik">
+          <div className="panel-head">
+            <h2>Provozní deník</h2>
+          </div>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Datum</th>
+                  <th>Nasazení / místo</th>
+                  <th>Doba</th>
+                  <th>Závada</th>
+                  <th>Odstranění</th>
+                  <th>Poznámka / původní podpis</th>
+                </tr>
+              </thead>
+              <tbody>
+                {item.logEntries.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>
+                      {entry.occurredAt?.toLocaleDateString("cs-CZ") ?? "—"}
+                    </td>
+                    <td>{entry.locationText ?? entry.description ?? "—"}</td>
+                    <td>
+                      {entry.durationMinutes != null
+                        ? `${entry.durationMinutes} min`
+                        : "—"}
+                    </td>
+                    <td>{entry.defectDescription ?? "—"}</td>
+                    <td>{entry.remedyDescription ?? "—"}</td>
+                    <td>{entry.note ?? entry.legacySignatureText ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section className="card equipment-records" id="zavady">
+          <div className="panel-head">
+            <h2>Závady a opravy</h2>
+          </div>
+          <div className="panel-body">
+            {defectHistory.map((defect) => (
+              <div className="defect-record" key={defect.id}>
+                <strong>{defect.description}</strong>
+                <span>
+                  {defect.foundAt.toLocaleDateString("cs-CZ")} ·{" "}
+                  {defect.severity} ·{" "}
+                  {defect.closedAt ? "Uzavřeno" : "Otevřeno"}
+                </span>
+                {defect.serviceCase?.events.map((event) => (
+                  <small key={event.id}>
+                    {event.createdAt.toLocaleDateString("cs-CZ")}:{" "}
+                    {event.description}
+                  </small>
+                ))}
+              </div>
+            ))}
+          </div>
+        </section>
         <section className="dashboard-grid">
-          <div className="card">
+          <div className="card" id="dokumenty">
             <div className="panel-head">
               <h2>Historické protokoly</h2>
             </div>
             <div className="panel-body">
+              {documents.map((document) => (
+                <div className="deadline" key={document.id}>
+                  <i className="dot" />
+                  <div>
+                    <strong>{document.fileName}</strong>
+                    <span>
+                      {document.mimeType} ·{" "}
+                      {(Number(document.sizeBytes) / 1024).toFixed(0)} kB
+                    </span>
+                  </div>
+                </div>
+              ))}
               {item.legacyProtocols.length ? (
                 item.legacyProtocols.map((protocol) => (
                   <div className="deadline" key={protocol.id}>
@@ -420,6 +712,23 @@ export default async function EquipmentDetail({
                 </div>
               )}
             </div>
+          </div>
+        </section>
+        <section className="card equipment-records" id="historie">
+          <div className="panel-head">
+            <h2>Historie</h2>
+          </div>
+          <div className="panel-body">
+            {audit.map((entry) => (
+              <div className="history-row" key={entry.id}>
+                <span>{entry.createdAt.toLocaleString("cs-CZ")}</span>
+                <strong>{entry.action}</strong>
+                <span>{entry.reason ?? "—"}</span>
+              </div>
+            ))}
+            {documents.length > 0 && (
+              <p className="muted">Dokumentů v úložišti: {documents.length}</p>
+            )}
           </div>
         </section>
       </div>

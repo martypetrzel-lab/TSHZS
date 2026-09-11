@@ -132,6 +132,18 @@ enum TaskPriority {
   CRITICAL
 }
 
+enum EquipmentLogEventType {
+  DEPLOYMENT
+  TRAINING
+  INSPECTION
+  DEFECT
+  REPAIR
+  SERVICE
+  REVISION
+  TRANSFER
+  OTHER
+}
+
 model Organization {
   id        String          @id @default(cuid())
   name      String          @unique
@@ -180,21 +192,23 @@ model Vehicle {
 }
 
 model User {
-  id             String                  @id @default(cuid())
-  username       String                  @unique
-  displayName    String
-  passwordHash   String
-  active         Boolean                 @default(true)
-  organizationId String
-  organization   Organization            @relation(fields: [organizationId], references: [id])
-  roles          UserRole[]
-  sessions       Session[]
-  qualifications UserQualification[]
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
-  importJobs     ImportJob[]
-  meterReadings  EquipmentMeterReading[]
-  operatingLogs  EquipmentOperatingLog[]
+  id                  String                  @id @default(cuid())
+  username            String                  @unique
+  displayName         String
+  passwordHash        String
+  active              Boolean                 @default(true)
+  organizationId      String
+  organization        Organization            @relation(fields: [organizationId], references: [id])
+  roles               UserRole[]
+  sessions            Session[]
+  qualifications      UserQualification[]
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  importJobs          ImportJob[]
+  meterReadings       EquipmentMeterReading[]
+  operatingLogs       EquipmentOperatingLog[]
+  assignedEquipment   EquipmentItem[]         @relation("EquipmentAssignment")
+  equipmentLogEntries EquipmentLogEntry[]
 }
 
 model Session {
@@ -272,70 +286,82 @@ model EquipmentCategory {
 }
 
 model EquipmentItem {
-  id                      String                     @id @default(cuid())
-  uid                     String                     @unique
-  name                    String
-  evidenceMode            EvidenceMode               @default(INDIVIDUAL)
-  quantity                Int                        @default(1)
-  minimumQuantity         Int?
-  categoryId              String
-  organizationId          String
-  stationId               String
-  locationId              String?
-  vehicleId               String?
-  manufacturer            String?
-  model                   String?
-  typeName                String?
-  serialNumber            String?
-  registrationNumber      String?
-  internalId              String?
-  legacyId                String?
-  legacyProtocolReference String?
-  importedAt              DateTime?
-  importJobId             String?
-  needsReview             Boolean                    @default(false)
-  currentOperatingHours   Decimal?                   @db.Decimal(12, 2)
-  operatingHoursReadAt    DateTime?
-  usageCount              Int                        @default(0)
-  commissionedAt          DateTime?
-  passportReference       String?
-  manufacturedAt          DateTime?
-  manufacturedYear        Int?
-  acquiredAt              DateTime?
-  registeredAt            DateTime                   @default(now())
-  warrantyUntil           DateTime?
-  declaredLifetimeMonths  Int?
-  lifetimeUntil           DateTime?
-  purchasePrice           Decimal?                   @db.Decimal(12, 2)
-  supplier                String?
-  status                  EquipmentStatus            @default(IN_STOCK)
-  complianceStatus        ComplianceStatus           @default(UNDEFINED)
-  note                    String?
-  parentSetId             String?
-  category                EquipmentCategory          @relation(fields: [categoryId], references: [id])
-  organization            Organization               @relation(fields: [organizationId], references: [id])
-  station                 Station                    @relation(fields: [stationId], references: [id])
-  location                Location?                  @relation(fields: [locationId], references: [id])
-  vehicle                 Vehicle?                   @relation(fields: [vehicleId], references: [id])
-  parentSet               EquipmentItem?             @relation("EquipmentSet", fields: [parentSetId], references: [id])
-  components              EquipmentItem[]            @relation("EquipmentSet")
-  requirements            EquipmentRequirement[]
-  statusHistory           EquipmentStatusHistory[]
-  locationHistory         EquipmentLocationHistory[]
-  inspections             Inspection[]
-  operatingLogs           EquipmentOperatingLog[]
-  meterReadings           EquipmentMeterReading[]
-  defects                 Defect[]
-  legacyProtocols         Protocol[]
-  createdById             String?
-  createdAt               DateTime                   @default(now())
-  updatedAt               DateTime                   @updatedAt
-  archivedAt              DateTime?
+  id                         String                     @id @default(cuid())
+  uid                        String                     @unique
+  name                       String
+  evidenceMode               EvidenceMode               @default(INDIVIDUAL)
+  quantity                   Int                        @default(1)
+  minimumQuantity            Int?
+  categoryId                 String
+  organizationId             String
+  stationId                  String
+  locationId                 String?
+  vehicleId                  String?
+  manufacturer               String?
+  model                      String?
+  typeName                   String?
+  serialNumber               String?
+  registrationNumber         String?
+  internalId                 String?
+  legacyId                   String?
+  legacyIdentificationNumber String?
+  material                   String?
+  manufacturingText          String?
+  commissioningText          String?
+  technicalDescription       String?
+  assignedUserId             String?
+  assignedPersonText         String?
+  legacyProtocolReference    String?
+  importedAt                 DateTime?
+  importJobId                String?
+  needsReview                Boolean                    @default(false)
+  currentOperatingHours      Decimal?                   @db.Decimal(12, 2)
+  operatingHoursReadAt       DateTime?
+  usageCount                 Int                        @default(0)
+  commissionedAt             DateTime?
+  passportReference          String?
+  manufacturedAt             DateTime?
+  manufacturedYear           Int?
+  acquiredAt                 DateTime?
+  registeredAt               DateTime                   @default(now())
+  warrantyUntil              DateTime?
+  declaredLifetimeMonths     Int?
+  lifetimeUntil              DateTime?
+  purchasePrice              Decimal?                   @db.Decimal(12, 2)
+  supplier                   String?
+  status                     EquipmentStatus            @default(IN_STOCK)
+  complianceStatus           ComplianceStatus           @default(UNDEFINED)
+  note                       String?
+  parentSetId                String?
+  category                   EquipmentCategory          @relation(fields: [categoryId], references: [id])
+  organization               Organization               @relation(fields: [organizationId], references: [id])
+  station                    Station                    @relation(fields: [stationId], references: [id])
+  location                   Location?                  @relation(fields: [locationId], references: [id])
+  vehicle                    Vehicle?                   @relation(fields: [vehicleId], references: [id])
+  assignedUser               User?                      @relation("EquipmentAssignment", fields: [assignedUserId], references: [id])
+  parentSet                  EquipmentItem?             @relation("EquipmentSet", fields: [parentSetId], references: [id])
+  components                 EquipmentItem[]            @relation("EquipmentSet")
+  requirements               EquipmentRequirement[]
+  statusHistory              EquipmentStatusHistory[]
+  locationHistory            EquipmentLocationHistory[]
+  inspections                Inspection[]
+  operatingLogs              EquipmentOperatingLog[]
+  meterReadings              EquipmentMeterReading[]
+  specifications             EquipmentSpecification[]
+  logEntries                 EquipmentLogEntry[]
+  defects                    Defect[]
+  legacyProtocols            Protocol[]
+  createdById                String?
+  createdAt                  DateTime                   @default(now())
+  updatedAt                  DateTime                   @updatedAt
+  archivedAt                 DateTime?
 
   @@index([stationId, status])
   @@index([categoryId])
   @@index([serialNumber])
   @@index([legacyId])
+  @@index([legacyIdentificationNumber])
+  @@index([assignedUserId])
   @@index([importJobId])
   @@index([needsReview])
 }
@@ -351,6 +377,67 @@ model EquipmentStatusHistory {
   equipment   EquipmentItem    @relation(fields: [equipmentId], references: [id])
 
   @@index([equipmentId, changedAt])
+}
+
+model EquipmentSpecification {
+  id          String        @id @default(cuid())
+  equipmentId String
+  name        String
+  value       String
+  unit        String?
+  sortOrder   Int           @default(0)
+  source      String?
+  sourceFile  String?
+  sourceSheet String?
+  sourceRow   Int?
+  importJobId String?
+  equipment   EquipmentItem @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@unique([importJobId, sourceSheet, sourceRow, name])
+  @@index([equipmentId, sortOrder])
+}
+
+model EquipmentLogEntry {
+  id                  String                @id @default(cuid())
+  equipmentId         String
+  eventType           EquipmentLogEventType @default(OTHER)
+  occurredAt          DateTime?
+  locationText        String?
+  durationMinutes     Int?
+  description         String?
+  defectDescription   String?
+  remedyDescription   String?
+  note                String?
+  legacySignatureText String?
+  createdById         String
+  createdAt           DateTime              @default(now())
+  source              String?
+  legacyImported      Boolean               @default(false)
+  sourceFile          String?
+  sourceSheet         String?
+  sourceRow           Int?
+  importJobId         String?
+  equipment           EquipmentItem         @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  createdBy           User                  @relation(fields: [createdById], references: [id])
+
+  @@unique([importJobId, sourceSheet, sourceRow])
+  @@index([equipmentId, occurredAt])
+}
+
+model ImportedFieldValue {
+  id          String   @id @default(cuid())
+  entityType  String
+  entityId    String
+  fieldName   String
+  valueText   String?
+  sourceFile  String
+  sourceSheet String
+  sourceRow   Int
+  importJobId String
+  createdAt   DateTime @default(now())
+
+  @@unique([importJobId, sourceSheet, sourceRow, fieldName])
+  @@index([entityType, entityId])
 }
 
 model EquipmentLocationHistory {
