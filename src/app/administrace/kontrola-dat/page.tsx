@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ModulePage } from "@/components/module-page";
 import { suggestCeproTarget } from "@/lib/cepro";
+import { checklistMappingRows } from "@/lib/checklist-reconciliation";
 import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 export default async function Page() {
@@ -87,6 +88,9 @@ export default async function Page() {
   const suspicious = items.filter(
     (i) => i.legacyId && !/^\d+$/.test(i.legacyId.trim()),
   );
+  const checklistRows = (await checklistMappingRows()).filter(
+    (row) => row.status !== "PŘIŘAZENO",
+  );
   const stats = [
     ["Bez kategorie", 0],
     ["Bez aplikovatelného pravidla", withoutRule.length],
@@ -98,6 +102,7 @@ export default async function Page() {
     ["Podezřelé importované ID", suspicious.length],
     ["Duplicitní výrobní čísla", serialGroups.length],
     ["Duplicitní evidenční čísla", registrationGroups.length],
+    ["Kontroly bez checklistu", checklistRows.length],
   ];
   return (
     <ModulePage eyebrow="Datová kvalita" title="Kontrola dat">
@@ -133,6 +138,47 @@ export default async function Page() {
           ))}
         </section>
       )}
+      <section className="card data-check-list">
+        <div className="panel-head">
+          <h2>KONTROLY BEZ CHECKLISTU</h2>
+          <Link href="/administrace/checklisty/mapovani">
+            Vyřešit mapování →
+          </Link>
+        </div>
+        <p>
+          {checklistRows.length} aktivních kontrolních povinností vyžaduje
+          kontrolu mapování.
+        </p>
+        {checklistRows
+          .slice(0, 50)
+          .map(({ requirement, suggestion, status }) => (
+            <div className="deadline" key={requirement.id}>
+              <span className="dot orange" />
+              <div>
+                <Link href={`/prostredky/${requirement.equipmentId}`}>
+                  <strong>{requirement.equipment.name}</strong>
+                </Link>
+                <span>
+                  {requirement.equipment.uid} · {requirement.name} ·{" "}
+                  {requirement.sourceType ?? "bez zdroje"} · RuleVersion{" "}
+                  {requirement.ruleVersion?.version ?? "—"} · návrh{" "}
+                  {suggestion?.rule.name ?? "vyžaduje ruční rozhodnutí"} ·{" "}
+                  {status}
+                </span>
+              </div>
+              <Link
+                href={`/administrace/checklisty/mapovani?stav=${encodeURIComponent(status)}`}
+              >
+                Mapovat
+              </Link>
+            </div>
+          ))}
+        {!checklistRows.length && (
+          <div className="result-banner success">
+            Všechny aktivní kontrolní povinnosti mají jednoznačné mapování.
+          </div>
+        )}
+      </section>
     </ModulePage>
   );
 }

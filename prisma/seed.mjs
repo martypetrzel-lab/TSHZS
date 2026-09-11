@@ -6,6 +6,10 @@ import {
   CEPRO_RULES,
   CEPRO_SOURCE,
 } from "./cepro-methodology.mjs";
+import {
+  checklistKeyForRule,
+  ruleVersionStrategy,
+} from "./checklist-mapping.mjs";
 
 const db = new PrismaClient();
 
@@ -350,43 +354,7 @@ async function seedCeproMethodology() {
     checklistVersions.set(key, version.id);
   }
 
-  const checklistFor = (targetKey, name, performedBy, type) => {
-    if (targetKey === "LADDER") return "ladder";
-    if (["LIFTING_BAG", "PIPE_PLUG", "SEALING_BAG"].includes(targetKey))
-      return "bag";
-    if (targetKey === "FIRE_PUMP")
-      return name.includes("sání")
-        ? "pump-suction"
-        : name.includes("nejvyšší")
-          ? "pump-pressure"
-          : "pump-weekly";
-    if (targetKey === "THERMAL_CAMERA")
-      return name.includes("Denní")
-        ? "thermal-daily"
-        : name.includes("Týdenní")
-          ? "thermal-weekly"
-          : "thermal-monthly";
-    return (
-      {
-        SUCTION_HOSE: "suction-hose",
-        HEIGHT_WORK: "height",
-        BOAT_ENGINE: "boat-engine",
-        FIREFIGHTER_PPE: "ppe",
-        HELMET: "helmet",
-        AED: "aed",
-        COMPRESSOR: "compressor",
-        COMPRESSOR_ASTRA: "compressor",
-        COMPRESSOR_TRIDENT: "compressor",
-        WATER_RESCUE: "water-rescue",
-      }[targetKey] ??
-      (type !== "INSPECTION" ||
-      /extern|výrobce|servisní organizace|revizní technik/i.test(
-        performedBy ?? "",
-      )
-        ? undefined
-        : "general-ts")
-    );
-  };
+  const desiredVersions = [];
   for (const entry of CEPRO_RULES) {
     const seedKey =
       `cepro:${entry.targetKey}:${entry.name}:${entry.trigger}:${entry.intervalValue ?? "event"}:${entry.intervalUnit ?? "none"}:${entry.performedBy}`
@@ -421,28 +389,13 @@ async function seedCeproMethodology() {
         active: true,
       },
     });
-    const checklistKey = checklistFor(
-      entry.targetKey,
-      entry.name,
-      entry.performedBy,
-      entry.type,
-    );
-    await db.ruleVersion.upsert({
+    const checklistKey = checklistKeyForRule(entry);
+    const desiredChecklistId = checklistKey
+      ? checklistVersions.get(checklistKey)
+      : null;
+    const baseVersion = await db.ruleVersion.upsert({
       where: { ruleId_version: { ruleId: found.id, version: 1 } },
-      update: {
-        validFrom: CEPRO_SOURCE.effectiveFrom,
-        intervalValue: entry.intervalValue,
-        intervalUnit: entry.intervalUnit,
-        trigger: entry.trigger,
-        performedBy: entry.performedBy,
-        article: entry.article ?? null,
-        note:
-          entry.note ??
-          "Požadavky výrobce stanovené odlišně nebo nad rámec metodiky zůstávají současně platné.",
-        checklistTemplateVersionId: checklistKey
-          ? checklistVersions.get(checklistKey)
-          : null,
-      },
+      update: {},
       create: {
         ruleId: found.id,
         version: 1,
@@ -455,11 +408,134 @@ async function seedCeproMethodology() {
         note:
           entry.note ??
           "Požadavky výrobce stanovené odlišně nebo nad rámec metodiky zůstávají současně platné.",
-        checklistTemplateVersionId: checklistKey
-          ? checklistVersions.get(checklistKey)
-          : null,
+        checklistTemplateVersionId: desiredChecklistId,
       },
     });
+    desiredVersions.push({
+      rule: found,
+      baseVersion,
+      entry,
+      desiredChecklistId,
+    });
+  }
+  await reconcileChecklistLinks(desiredVersions);
+}
+
+async function reconcileChecklistLinks(desiredVersions) {
+  for (const {
+    rule,
+    baseVersion,
+    entry,
+    desiredChecklistId,
+  } of desiredVersions) {
+    if (!desiredChecklistId) continue;
+    let targetVersion = baseVersion;
+    const latestDesired = await db.ruleVersion.findFirst({
+      where: {
+        ruleId: rule.id,
+        checklistTemplateVersionId: desiredChecklistId,
+        validTo: null,
+      },
+      orderBy: { version: "desc" },
+    });
+    if (latestDesired) targetVersion = latestDesired;
+    if (baseVersion.checklistTemplateVersionId !== desiredChecklistId) {
+      const used = await db.ruleVersion.findFirst({
+        where: {
+          id: baseVersion.id,
+          OR: [
+            { protocolRules: { some: {} } },
+            {
+              requirements: {
+                some: {
+                  inspections: {
+                    some: {
+                      state: { in: ["CLOSED", "CANCELLED", "CORRECTED"] },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+        select: { id: true },
+      });
+      const strategy = ruleVersionStrategy({
+        currentChecklistId: baseVersion.checklistTemplateVersionId,
+        desiredChecklistId,
+        historicallyUsed: Boolean(used),
+        safeVersionExists: Boolean(latestDesired),
+      });
+      if (strategy === "REUSE_VERSION") targetVersion = latestDesired;
+      else if (strategy === "CREATE_VERSION") {
+        const latest = await db.ruleVersion.findFirst({
+          where: { ruleId: rule.id },
+          orderBy: { version: "desc" },
+          select: { version: true },
+        });
+        targetVersion = await db.ruleVersion.create({
+          data: {
+            ruleId: rule.id,
+            version: (latest?.version ?? 0) + 1,
+            validFrom: new Date(),
+            intervalValue: entry.intervalValue,
+            intervalUnit: entry.intervalUnit,
+            trigger: entry.trigger,
+            performedBy: entry.performedBy,
+            article: entry.article ?? null,
+            note:
+              entry.note ??
+              "Nová verze vytvořená bezpečným doplněním checklistu; historická verze zůstala beze změny.",
+            checklistTemplateVersionId: desiredChecklistId,
+          },
+        });
+      } else if (strategy === "UPDATE_UNUSED") {
+        targetVersion = await db.ruleVersion.update({
+          where: { id: baseVersion.id },
+          data: { checklistTemplateVersionId: desiredChecklistId },
+        });
+      }
+    }
+    const requirements = await db.equipmentRequirement.findMany({
+      where: {
+        sourceType: "INTERNAL_CEPRO",
+        archivedAt: null,
+        OR: [{ sourceRuleId: rule.id }, { ruleVersion: { ruleId: rule.id } }],
+      },
+      select: {
+        id: true,
+        ruleVersionId: true,
+        equipmentId: true,
+        ruleVersion: { select: { checklistTemplateVersionId: true } },
+      },
+    });
+    for (const requirement of requirements) {
+      if (
+        requirement.ruleVersion?.checklistTemplateVersionId ===
+        desiredChecklistId
+      )
+        continue;
+      await db.$transaction([
+        db.equipmentRequirement.update({
+          where: { id: requirement.id },
+          data: { ruleVersionId: targetVersion.id },
+        }),
+        db.auditLog.create({
+          data: {
+            action: "CHECKLIST_REQUIREMENT_RECONCILED",
+            entityType: "EquipmentRequirement",
+            entityId: requirement.id,
+            previousValue: { ruleVersionId: requirement.ruleVersionId },
+            newValue: {
+              ruleVersionId: targetVersion.id,
+              checklistTemplateVersionId: desiredChecklistId,
+              equipmentId: requirement.equipmentId,
+            },
+            reason: "Idempotentní reconciliation pravidla HZS ČEPRO",
+          },
+        }),
+      ]);
+    }
   }
 }
 

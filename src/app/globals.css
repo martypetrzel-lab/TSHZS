@@ -537,6 +537,45 @@ a {
   background: #171b22;
   color: #fff;
 }
+.mapping-actions {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 18rem;
+}
+.mapping-actions form {
+  display: flex;
+  gap: 0.4rem;
+}
+.mapping-actions select {
+  min-width: 12rem;
+}
+.legacy-mapping {
+  max-width: 58rem;
+  padding: 1.4rem;
+  border-left: 5px solid #d97706;
+}
+.legacy-mapping dl,
+.missing-checklist dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+.legacy-mapping dl div,
+.missing-checklist dl div {
+  padding: 0.7rem;
+  background: var(--surface-soft);
+  border-radius: 0.5rem;
+}
+.legacy-mapping dt,
+.missing-checklist dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.legacy-mapping dd,
+.missing-checklist dd {
+  margin: 0.2rem 0 0;
+  font-weight: 700;
+}
 @media (max-width: 520px) {
   .grid-stats {
     grid-template-columns: 1fr;

@@ -11,6 +11,11 @@ import {
   equipmentOutcome,
   validateChecklistCompletion,
 } from "./inspection-records";
+import {
+  checklistKeyForRule,
+  ruleVersionStrategy,
+} from "../../prisma/checklist-mapping.mjs";
+import { selectUnambiguousRule } from "./checklist-matching";
 
 describe("uzavření kontrolního checklistu", () => {
   it("odmítne nevyplněný povinný bod", () =>
@@ -136,4 +141,89 @@ describe("konkrétní metodické checklisty", () => {
       ),
     ).toBe(true);
   });
+});
+
+describe("mapování povinností na checklisty", () => {
+  it("novému žebříku přiřadí ladder checklist", () =>
+    expect(
+      checklistKeyForRule({
+        targetKey: "LADDER",
+        name: "Odborná kontrola",
+        performedBy: "technik TS",
+        type: "INSPECTION",
+      }),
+    ).toBe("ladder"));
+  it("externí nedestruktivní zkoušce žebříku interní checklist nepřiřadí", () =>
+    expect(
+      checklistKeyForRule({
+        targetKey: "LADDER",
+        name: "Nedestruktivní zkouška",
+        performedBy: "výrobce",
+        type: "INSPECTION",
+      }),
+    ).toBeNull());
+  it("general-ts vzniká jen jako explicitní mapování pravidla", () =>
+    expect(
+      checklistKeyForRule({
+        targetKey: "NOZZLE",
+        name: "Kontrola",
+        performedBy: "technik TS",
+        type: "INSPECTION",
+      }),
+    ).toBe("general-ts"));
+  it("legacy povinnost s jedinou shodou nabídne pravidlo ČEPRO", () =>
+    expect(
+      selectUnambiguousRule(
+        { name: "Roční kontrola", intervalValue: 12, intervalUnit: "MONTHS" },
+        [
+          {
+            id: "cepro",
+            name: "Odborná kontrola",
+            intervalValue: 12,
+            intervalUnit: "MONTHS",
+            performedBy: "technik TS",
+          },
+        ],
+      )?.id,
+    ).toBe("cepro"));
+  it("nejednoznačný legacy záznam vyžaduje ruční rozhodnutí", () =>
+    expect(
+      selectUnambiguousRule(
+        { name: "Kontrola", intervalValue: null, intervalUnit: null },
+        [
+          {
+            id: "a",
+            name: "Denní kontrola",
+            intervalValue: 1,
+            intervalUnit: "DAYS",
+            performedBy: "uživatel",
+          },
+          {
+            id: "b",
+            name: "Týdenní kontrola",
+            intervalValue: 1,
+            intervalUnit: "WEEKS",
+            performedBy: "technik TS",
+          },
+        ],
+      ),
+    ).toBeNull());
+  it("nepřepíše historicky použitou RuleVersion", () =>
+    expect(
+      ruleVersionStrategy({
+        currentChecklistId: null,
+        desiredChecklistId: "ladder",
+        historicallyUsed: true,
+        safeVersionExists: false,
+      }),
+    ).toBe("CREATE_VERSION"));
+  it("nepoužitou RuleVersion bezpečně doplní", () =>
+    expect(
+      ruleVersionStrategy({
+        currentChecklistId: null,
+        desiredChecklistId: "ladder",
+        historicallyUsed: false,
+        safeVersionExists: false,
+      }),
+    ).toBe("UPDATE_UNUSED"));
 });

@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { startInspection } from "@/app/actions/inspection";
+import { applyCeproRule } from "@/app/actions/checklist-mapping";
 import { InspectionForm } from "@/components/inspection-form";
 import { ModulePage } from "@/components/module-page";
 import { requireUser } from "@/lib/auth";
+import { suggestCeproTarget } from "@/lib/cepro";
+import { selectUnambiguousRule } from "@/lib/checklist-matching";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -31,20 +34,165 @@ export default async function Page({
     requirement.type !== "INSPECTION"
   )
     notFound();
+  const roles = new Set(user.roles.map((entry) => entry.role.code));
+  const canMap = roles.has("ADMIN") || roles.has("TS_ADMIN");
+  const target = suggestCeproTarget(
+    requirement.equipment.name,
+    requirement.equipment.typeName,
+  );
+  const candidates = target
+    ? await prisma.ruleVersion.findMany({
+        where: {
+          rule: {
+            sourceType: "INTERNAL_CEPRO",
+            targetKey: target,
+            requirementType: "INSPECTION",
+            active: true,
+          },
+          checklistTemplateVersionId: { not: null },
+          validTo: null,
+        },
+        include: { rule: true },
+        orderBy: { version: "desc" },
+      })
+    : [];
+  const suggestion = selectUnambiguousRule(requirement, candidates);
+  const suggestedChecklist = suggestion?.checklistTemplateVersionId
+    ? await prisma.checklistTemplateVersion.findUnique({
+        where: { id: suggestion.checklistTemplateVersionId },
+        include: { template: true },
+      })
+    : null;
+  if (requirement.sourceType === "LEGACY_IMPORT")
+    return (
+      <ModulePage
+        eyebrow="Kontroly · starší evidence"
+        title="Povinnost pochází ze staré evidence"
+      >
+        <section className="card legacy-mapping">
+          <dl>
+            <div>
+              <dt>Prostředek</dt>
+              <dd>
+                {requirement.equipment.name} · {requirement.equipment.uid}
+              </dd>
+            </div>
+            <div>
+              <dt>Původní povinnost</dt>
+              <dd>{requirement.name}</dd>
+            </div>
+            <div>
+              <dt>Nalezené pravidlo ČEPRO</dt>
+              <dd>
+                {suggestion
+                  ? `${suggestion.rule.name} – ${suggestion.intervalValue} ${suggestion.intervalUnit}`
+                  : "Shoda není jednoznačná"}
+              </dd>
+            </div>
+            <div>
+              <dt>Zdroj</dt>
+              <dd>
+                {suggestion
+                  ? `Metodika HZS ČEPRO${suggestion.article ? `, čl. ${suggestion.article}` : ""}`
+                  : "LEGACY_IMPORT"}
+              </dd>
+            </div>
+            <div>
+              <dt>Checklist</dt>
+              <dd>
+                {suggestedChecklist?.template.name ??
+                  "Je potřeba vybrat kontrolní šablonu."}
+              </dd>
+            </div>
+          </dl>
+          {canMap && suggestion && (
+            <form action={applyCeproRule}>
+              <input
+                type="hidden"
+                name="requirementId"
+                value={requirement.id}
+              />
+              <input type="hidden" name="ruleVersionId" value={suggestion.id} />
+              <button className="button">Použít pravidlo ČEPRO</button>
+            </form>
+          )}
+          <div className="row-actions">
+            {canMap && (
+              <Link
+                className="button secondary"
+                href="/administrace/checklisty/mapovani?stav=LEGACY"
+              >
+                Vybrat jinou šablonu
+              </Link>
+            )}
+            <Link className="button secondary" href="/kontroly">
+              Zrušit
+            </Link>
+          </div>
+          {!suggestion && (
+            <p className="reason">
+              Je potřeba ruční rozhodnutí. Systém nebude checklist odhadovat.
+            </p>
+          )}
+        </section>
+      </ModulePage>
+    );
   const checklistVersionId =
     requirement.ruleVersion?.checklistTemplateVersionId;
   if (!checklistVersionId)
     return (
       <ModulePage eyebrow="Kontroly" title="Kontrolu nelze zahájit">
         <div className="card missing-checklist">
-          <strong>Pro tuto povinnost není vytvořena kontrolní šablona.</strong>
-          <p>
-            Administrátor musí k pravidlu přiřadit konkrétní verzi checklistu.
-            Obecný checklist se nepoužije automaticky.
-          </p>
-          <Link className="button secondary" href="/kontroly">
-            Zpět na kontroly
-          </Link>
+          <strong>Chybí kontrolní šablona.</strong>
+          <dl>
+            <div>
+              <dt>Prostředek</dt>
+              <dd>
+                {requirement.equipment.name} · {requirement.equipment.uid}
+              </dd>
+            </div>
+            <div>
+              <dt>Povinnost</dt>
+              <dd>{requirement.name}</dd>
+            </div>
+            <div>
+              <dt>Zdroj</dt>
+              <dd>
+                {requirement.sourceType ?? requirement.source ?? "Neuveden"}
+              </dd>
+            </div>
+            <div>
+              <dt>Důvod</dt>
+              <dd>Pro tuto povinnost není vytvořena kontrolní šablona.</dd>
+            </div>
+          </dl>
+          <p>Obecný checklist se nepoužije automaticky.</p>
+          {canMap && suggestion && (
+            <form action={applyCeproRule}>
+              <input
+                type="hidden"
+                name="requirementId"
+                value={requirement.id}
+              />
+              <input type="hidden" name="ruleVersionId" value={suggestion.id} />
+              <button className="button">
+                Použít doporučenou šablonu {suggestedChecklist?.template.name}
+              </button>
+            </form>
+          )}
+          <div className="row-actions">
+            {canMap && (
+              <Link
+                className="button secondary"
+                href="/administrace/checklisty/mapovani"
+              >
+                Vyřešit mapování
+              </Link>
+            )}
+            <Link className="button secondary" href="/kontroly">
+              Zpět na kontroly
+            </Link>
+          </div>
         </div>
       </ModulePage>
     );
