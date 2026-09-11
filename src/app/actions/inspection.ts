@@ -703,15 +703,25 @@ export async function closeInspection(formData: FormData) {
           },
         },
       });
-      if (draft.scheduledFor && dateKey(draft.scheduledFor) !== dateKey(performedAt))
+      if (
+        dateKey(performedAt) !== today ||
+        (draft.scheduledFor &&
+          dateKey(draft.scheduledFor) !== dateKey(performedAt))
+      )
         await tx.auditLog.create({
           data: {
             userId: user.id,
             action: "INSPECTION_PERFORMED_DATE_CHANGED",
             entityType: "Inspection",
             entityId: draft.id,
-            previousValue: { performedAt: draft.scheduledFor.toISOString() },
+            previousValue: {
+              performedAt: draft.scheduledFor?.toISOString() ?? null,
+            },
             newValue: { performedAt: performedAt.toISOString() },
+            reason:
+              dateKey(performedAt) !== today
+                ? "Historický zápis data skutečného provedení"
+                : null,
           },
         });
       if (dateKey(protocolDate) !== today || protocolDate < performedAt)
@@ -771,8 +781,12 @@ export async function closeInspection(formData: FormData) {
 export async function cancelInspection(formData: FormData) {
   const user = await requireInspectionOperator();
   const inspectionId = String(formData.get("inspectionId") ?? "");
-  const reason = String(formData.get("reason") ?? "").trim();
-  if (!reason) throw new Error("Důvod storna je povinný.");
+  const reasonText = String(formData.get("reason") ?? "").trim();
+  const reasonCategory = String(
+    formData.get("reasonCategory") ?? "Jiný důvod",
+  ).trim();
+  const reason = `${reasonCategory}: ${reasonText}`;
+  if (!reasonText) throw new Error("Důvod storna je povinný.");
   const inspection = await prisma.inspection.findUnique({
     where: { id: inspectionId },
   });
