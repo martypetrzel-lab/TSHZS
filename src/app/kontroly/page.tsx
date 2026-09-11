@@ -6,7 +6,7 @@ import {
   saveShiftInspection,
 } from "@/app/actions/inspection";
 import { requireUser } from "@/lib/auth";
-import { isExternalInspection } from "@/lib/checklist-matching";
+import { canUserPerformInspection } from "@/lib/inspection-permissions";
 
 export const dynamic = "force-dynamic";
 const resultCs = {
@@ -65,8 +65,8 @@ export default async function Page({
     },
     orderBy: { nextDueAt: "asc" },
   });
-  const due = dueAll.filter(
-    (requirement) => !isExternalInspection(requirement.performedBy),
+  const due = dueAll.filter((requirement) =>
+    canUserPerformInspection(currentUser, requirement),
   );
   const drafts = await prisma.inspection.findMany({
     where: {

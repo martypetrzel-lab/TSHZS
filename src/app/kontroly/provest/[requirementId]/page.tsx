@@ -6,7 +6,10 @@ import { ModulePage } from "@/components/module-page";
 import { requireUser } from "@/lib/auth";
 import { resolveInspectionChecklist } from "@/lib/inspection-checklist";
 import { prisma } from "@/lib/prisma";
-import { isExternalInspection } from "@/lib/checklist-matching";
+import {
+  canUserPerformInspection,
+  inspectionPerformedBy,
+} from "@/lib/inspection-permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -33,18 +36,19 @@ export default async function Page({
     requirement.type !== "INSPECTION"
   )
     notFound();
-  if (isExternalInspection(requirement.performedBy))
+  if (!canUserPerformInspection(user, requirement))
     return (
       <ModulePage
         eyebrow="Kontroly"
         title="Tuto činnost nelze provést v aplikaci"
       >
         <div className="card missing-checklist">
-          <strong>Tuto činnost nemůže provést technik TS.</strong>
+          <strong>Tuto kontrolu nemáte oprávnění provést.</strong>
           <p>
-            Provádí ji{" "}
-            {requirement.performedBy ?? "výrobce nebo externí odborná osoba"}.
-            Systémová role ADMIN sama o sobě nenahrazuje odbornou kvalifikaci.
+            Požadované provedení:{" "}
+            {inspectionPerformedBy(requirement) ?? "technik TS"}. Systémová role
+            ADMIN sama o sobě nenahrazuje odbornou kvalifikaci ani roli
+            technika.
           </p>
           <Link
             className="button secondary"
@@ -82,6 +86,13 @@ export default async function Page({
                 kontroly je nutné provést také podle dokumentace výrobce a
                 platných předpisů.
               </p>
+            </div>
+          )}
+          {requirement.sourceType === "LEGACY_IMPORT" && (
+            <div className="legacy-checklist-notice">
+              Kontrolní povinnost pochází z původní evidence. Používá se
+              základní kontrolní formulář, pokud ještě nebyla přiřazena
+              specializovaná šablona podle metodiky HZS ČEPRO.
             </div>
           )}
           <dl>
@@ -176,6 +187,7 @@ export default async function Page({
         version: draft.checklistVersion.version,
         fallback:
           draft.checklistVersion.template.seedKey === "cepro:general-ts",
+        legacy: requirement.sourceType === "LEGACY_IMPORT",
         legacyId: requirement.equipment.legacyId,
         serialNumber: requirement.equipment.serialNumber,
         registrationNumber: requirement.equipment.registrationNumber,

@@ -33,6 +33,7 @@ type Props = {
     checklist: string;
     version: number;
     fallback: boolean;
+    legacy: boolean;
     legacyId: string | null;
     serialNumber: string | null;
     registrationNumber: string | null;
@@ -181,6 +182,13 @@ export function InspectionForm({
             checklist. Používá se základní formulář kontroly. Rozsah kontroly je
             nutné provést také podle dokumentace výrobce a platných předpisů.
           </p>
+        </div>
+      )}
+      {header.legacy && (
+        <div className="legacy-checklist-notice">
+          Kontrolní povinnost pochází z původní evidence. Používá se základní
+          kontrolní formulář, pokud ještě nebyla přiřazena specializovaná
+          šablona podle metodiky HZS ČEPRO.
         </div>
       )}
       <section className="card inspection-equipment-summary">

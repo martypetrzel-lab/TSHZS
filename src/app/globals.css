@@ -583,6 +583,15 @@ a {
   background: #fff7ed;
   color: #7c2d12;
 }
+
+.legacy-checklist-notice {
+  margin: 0 0 1rem;
+  padding: 0.8rem 1rem;
+  border-left: 3px solid var(--color-primary, #1f5d8f);
+  background: color-mix(in srgb, var(--color-primary, #1f5d8f) 7%, white);
+  color: var(--muted, #52606d);
+  line-height: 1.5;
+}
 .base-checklist-warning p {
   margin: 0.35rem 0 0;
 }

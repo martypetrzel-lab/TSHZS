@@ -13,6 +13,10 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canEditEquipment } from "@/lib/permissions";
 import { isExternalInspection } from "@/lib/checklist-matching";
+import {
+  canUserPerformInspection,
+  inspectionPerformedBy,
+} from "@/lib/inspection-permissions";
 import { recordOperatingHours } from "@/app/actions/operating-log";
 export const dynamic = "force-dynamic";
 const statuses: Record<string, string> = {
@@ -89,14 +93,8 @@ export default async function EquipmentDetail({
   const next = item.requirements[0];
   const today = new Date();
   const canEdit = canEditEquipment(user.roles.map(({ role }) => role.code));
-  const userRoleCodes = new Set(user.roles.map(({ role }) => role.code));
   const actionableInspections = item.requirements.filter(
-    (r) =>
-      r.type === "INSPECTION" &&
-      !isExternalInspection(r.performedBy) &&
-      (r.performedBy?.toLocaleLowerCase("cs").includes("uživatel") ||
-        userRoleCodes.has("TECHNICIAN") ||
-        userRoleCodes.has("TS_ADMIN")),
+    (r) => r.type === "INSPECTION" && canUserPerformInspection(user, r),
   );
   return (
     <AppShell userName={user.displayName}>
@@ -507,12 +505,16 @@ export default async function EquipmentDetail({
                             >
                               Zadat revizi
                             </Link>
-                          ) : !isExternalInspection(requirement.performedBy) ? (
+                          ) : canUserPerformInspection(user, requirement) ? (
                             <Link href={`/kontroly/provest/${requirement.id}`}>
                               Provést kontrolu
                             </Link>
-                          ) : (
+                          ) : isExternalInspection(
+                              inspectionPerformedBy(requirement),
+                            ) ? (
                             <span>Provádí externí odborná osoba</span>
+                          ) : (
+                            <span>Nemáte oprávnění k provedení</span>
                           )}
                           <Link
                             href={`/prostredky/${item.id}/upravit#povinnosti`}

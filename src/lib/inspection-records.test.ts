@@ -17,6 +17,7 @@ import {
 } from "../../prisma/checklist-mapping.mjs";
 import { selectUnambiguousRule } from "./checklist-matching";
 import { chooseInspectionChecklist } from "./inspection-checklist-choice";
+import { canUserPerformInspection } from "./inspection-permissions";
 
 describe("uzavření kontrolního checklistu", () => {
   it("odmítne nevyplněný povinný bod", () =>
@@ -249,4 +250,45 @@ describe("mapování povinností na checklisty", () => {
         safeVersionExists: false,
       }),
     ).toBe("UPDATE_UNUSED"));
+});
+
+describe("oprávnění k provedení kontroly", () => {
+  const user = (code: string) => ({ roles: [{ role: { code } }] });
+  const legacy = {
+    performedBy: null,
+    sourceType: "LEGACY_IMPORT",
+    ruleVersion: null,
+  };
+
+  it.each(["TECHNICIAN", "TS_ADMIN"])(
+    "zobrazí a povolí legacy kontrolu roli %s",
+    (role) => expect(canUserPerformInspection(user(role), legacy)).toBe(true),
+  );
+  it("nepovažuje samotnou roli ADMIN za odbornou kvalifikaci", () =>
+    expect(canUserPerformInspection(user("ADMIN"), legacy)).toBe(false));
+  it("povolí uživatelskou kontrolu běžnému uživateli", () =>
+    expect(
+      canUserPerformInspection(user("USER"), {
+        performedBy: "uživatel",
+        ruleVersion: null,
+      }),
+    ).toBe(true));
+  it("nepovolí interní provedení externí kontroly", () =>
+    expect(
+      canUserPerformInspection(user("TECHNICIAN"), {
+        performedBy: "externí firma",
+        ruleVersion: null,
+      }),
+    ).toBe(false));
+  it("respektuje externí provedení doplněné současným pravidlem", () =>
+    expect(
+      canUserPerformInspection(user("TECHNICIAN"), {
+        performedBy: null,
+        sourceType: "LEGACY_IMPORT",
+        ruleVersion: {
+          performedBy: "servis výrobce",
+          qualificationId: null,
+        },
+      }),
+    ).toBe(false));
 });

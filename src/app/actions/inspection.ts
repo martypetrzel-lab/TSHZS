@@ -15,6 +15,7 @@ import {
 } from "@/lib/inspection-records";
 import { getStorage } from "@/lib/storage";
 import { resolveInspectionChecklist } from "@/lib/inspection-checklist";
+import { canUserPerformInspection } from "@/lib/inspection-permissions";
 
 const detailInclude = {
   equipment: { include: { vehicle: true, location: true, category: true } },
@@ -35,28 +36,10 @@ function assertAuthorized(
     ruleVersion: { qualificationId: string | null } | null;
   },
 ) {
-  const roles = new Set(user.roles.map((r) => r.role.code));
-  const professional = levelFor(requirement.performedBy) === "PROFESSIONAL";
-  if (professional && !["TS_ADMIN", "TECHNICIAN"].some((r) => roles.has(r)))
-    throw new Error("Odbornou kontrolu smí provést pouze oprávněný technik.");
-  const external =
-    /extern|výrobce|servisní organizace|revizní technik|odborně způsobilá osoba/i.test(
-      requirement.performedBy ?? "",
-    );
-  if (external)
+  if (!canUserPerformInspection(user, requirement))
     throw new Error(
-      "Tuto povinnost provádí externí odborný subjekt a nelze ji uzavřít jako vlastní kontrolu.",
+      "Tuto kontrolu nemůžete provést. Vyžaduje oprávněného technika, platnou kvalifikaci nebo externí odborný subjekt.",
     );
-  const qualificationId = requirement.ruleVersion?.qualificationId;
-  if (
-    qualificationId &&
-    !user.qualifications.some(
-      (q) =>
-        q.qualification.id === qualificationId &&
-        (!q.validUntil || q.validUntil >= new Date()),
-    )
-  )
-    throw new Error("Nemáte platnou kvalifikaci požadovanou tímto pravidlem.");
 }
 
 async function loadRequirement(id: string) {

@@ -1,8 +1,12 @@
 import Link from "next/link";
 import { ModulePage } from "@/components/module-page";
 import { prisma } from "@/lib/prisma";
-import { isExternalInspection } from "@/lib/checklist-matching";
 import { requireUser } from "@/lib/auth";
+import { isExternalInspection } from "@/lib/checklist-matching";
+import {
+  canUserPerformInspection,
+  inspectionPerformedBy,
+} from "@/lib/inspection-permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -13,25 +17,9 @@ export default async function Page({
 }) {
   const { hledat = "" } = await searchParams;
   const user = await requireUser();
-  const roles = new Set(user.roles.map((entry) => entry.role.code));
-  const canPerform = (performedBy: string | null) =>
-    !isExternalInspection(performedBy) &&
-    (performedBy?.toLocaleLowerCase("cs").includes("uživatel") ||
-      roles.has("TECHNICIAN") ||
-      roles.has("TS_ADMIN"));
   const equipment = await prisma.equipmentItem.findMany({
     where: {
       archivedAt: null,
-      ...(hledat
-        ? {
-            OR: [
-              { name: { contains: hledat, mode: "insensitive" } },
-              { uid: { contains: hledat, mode: "insensitive" } },
-              { serialNumber: { contains: hledat, mode: "insensitive" } },
-              { legacyId: { contains: hledat, mode: "insensitive" } },
-            ],
-          }
-        : {}),
       requirements: { some: { archivedAt: null, type: "INSPECTION" } },
     },
     include: {
@@ -44,12 +32,32 @@ export default async function Page({
       },
     },
     orderBy: { name: "asc" },
-    take: 100,
   });
-  const availableEquipment = equipment.filter((item) =>
-    item.requirements.some((requirement) =>
-      canPerform(requirement.performedBy),
+  const internalRequirements = equipment.flatMap((item) =>
+    item.requirements.filter(
+      (requirement) =>
+        !isExternalInspection(inspectionPerformedBy(requirement)),
     ),
+  );
+  const authorizedEquipment = equipment
+    .map((item) => ({
+      ...item,
+      requirements: item.requirements.filter((requirement) =>
+        canUserPerformInspection(user, requirement),
+      ),
+    }))
+    .filter((item) => item.requirements.length > 0);
+  const authorizedRequirementCount = authorizedEquipment.reduce(
+    (count, item) => count + item.requirements.length,
+    0,
+  );
+  const needle = hledat.trim().toLocaleLowerCase("cs");
+  const availableEquipment = authorizedEquipment.filter((item) =>
+    needle
+      ? `${item.name} ${item.uid} ${item.serialNumber ?? ""} ${item.legacyId ?? ""}`
+          .toLocaleLowerCase("cs")
+          .includes(needle)
+      : true,
   );
   return (
     <ModulePage eyebrow="Kontroly · nový záznam" title="Provést kontrolu">
@@ -80,34 +88,43 @@ export default async function Page({
               </small>
             </div>
             <div className="requirement-buttons">
-              {e.requirements
-                .filter((r) => canPerform(r.performedBy))
-                .map((r) => {
-                  return (
-                    <Link
-                      className="requirement-choice"
-                      href={`/kontroly/provest/${r.id}`}
-                      key={r.id}
-                    >
-                      <strong>{r.name}</strong>
-                      <span>
-                        {r.intervalValue ?? "—"} {r.intervalUnit ?? ""} ·{" "}
-                        {r.performedBy ?? "oprávněná osoba"}
-                      </span>
-                      <small>
-                        Další termín:{" "}
-                        {r.nextDueAt?.toLocaleDateString("cs-CZ") ?? "neurčen"}
-                      </small>
-                    </Link>
-                  );
-                })}
+              {e.requirements.map((r) => {
+                return (
+                  <Link
+                    className="requirement-choice"
+                    href={`/kontroly/provest/${r.id}`}
+                    key={r.id}
+                  >
+                    <strong>{r.name}</strong>
+                    <span>
+                      {r.intervalValue ?? "—"} {r.intervalUnit ?? ""} ·{" "}
+                      {inspectionPerformedBy(r) ??
+                        "kvalifikace v původní evidenci neurčena"}
+                    </span>
+                    <small>
+                      Další termín:{" "}
+                      {r.nextDueAt?.toLocaleDateString("cs-CZ") ?? "neurčen"}
+                    </small>
+                  </Link>
+                );
+              })}
             </div>
           </article>
         ))}
       </div>
-      {!availableEquipment.length && (
+      {!internalRequirements.length && (
         <div className="card empty-state">
-          Nebyl nalezen prostředek s aktivní kontrolní povinností.
+          Momentálně nejsou žádné interně proveditelné kontroly.
+        </div>
+      )}
+      {internalRequirements.length > authorizedRequirementCount && (
+        <div className="card empty-state">
+          Existují kontrolní povinnosti, ke kterým nemáte oprávnění.
+        </div>
+      )}
+      {authorizedEquipment.length > 0 && !availableEquipment.length && (
+        <div className="card empty-state">
+          Žádná dostupná kontrola neodpovídá zadanému hledání.
         </div>
       )}
     </ModulePage>
