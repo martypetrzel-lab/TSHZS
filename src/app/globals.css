@@ -930,6 +930,13 @@ a {
 .operating-form { display: grid; grid-template-columns: repeat(3,1fr) auto; gap: 10px; padding: 16px 20px; }
 .operating-form label { display: grid; gap: 5px; font-size: .82rem; font-weight: 700; }
 .operating-form input { border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px; }
+.inspection-form { margin-bottom: 18px; }
+.inspection-form fieldset { margin: 16px 20px; border: 1px solid var(--line); border-radius: 9px; padding: 16px; }
+.inspection-form legend { padding: 0 8px; font-weight: 800; }
+.inspection-item { display: grid; grid-template-columns: minmax(240px,1fr) minmax(180px,.5fr); gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.inspection-item label { display: grid; gap: 6px; }
+.inspection-item input, .inspection-item select { border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px; }
+.inspection-result { padding: 0 20px; }
 .sr-only {
   position: absolute;
   width: 1px;
@@ -978,4 +985,5 @@ a {
   .methodology-head, .comparison-columns { grid-template-columns: 1fr; }
   .data-check-grid { grid-template-columns: 1fr 1fr; }
   .operating-form { grid-template-columns: 1fr; }
+  .inspection-item { grid-template-columns: 1fr; }
 }

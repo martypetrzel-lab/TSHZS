@@ -1,10 +1,14 @@
-import { ModulePage } from "@/components/module-page";
-export default function Page() {
-  return (
-    <ModulePage
-      eyebrow="Odborné povinnosti"
-      title="Revize a kalibrace"
-      empty="Zatím nejsou evidovány žádné revize ani kalibrace."
-    />
+import { redirect } from "next/navigation";
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
+  const q = await searchParams;
+  const params = new URLSearchParams(
+    Object.entries(q).filter((entry): entry is [string, string] =>
+      Boolean(entry[1]),
+    ),
   );
+  redirect(`/kontroly?${params}`);
 }
