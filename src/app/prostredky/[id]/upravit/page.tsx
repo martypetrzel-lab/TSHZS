@@ -15,6 +15,7 @@ const statusOptions = [
   ["IN_STOCK", "Sklad"],
   ["RETIRED", "Vyřazeno"],
   ["LOST", "Ztraceno"],
+  ["WINTERIZED", "Zazimováno"],
 ] as const;
 const typeOptions = [
   ["INSPECTION", "Kontrola"],
@@ -268,6 +269,8 @@ export default async function Page({
                         <option value="WEEKS">týdnů</option>
                         <option value="MONTHS">měsíců</option>
                         <option value="YEARS">let</option>
+                        <option value="OPERATING_HOURS">motohodin</option>
+                        <option value="USAGE_COUNT">použití</option>
                       </select>
                     </div>
                   </div>
@@ -339,6 +342,8 @@ export default async function Page({
                       <option value="WEEKS">týdnů</option>
                       <option value="MONTHS">měsíců</option>
                       <option value="YEARS">let</option>
+                      <option value="OPERATING_HOURS">motohodin</option>
+                      <option value="USAGE_COUNT">použití</option>
                     </select>
                   </div>
                 </div>

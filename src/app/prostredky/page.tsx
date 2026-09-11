@@ -16,6 +16,7 @@ const labels: Record<string, string> = {
   IN_STOCK: "Sklad",
   RETIRED: "Vyřazeno",
   LOST: "Ztraceno",
+  WINTERIZED: "Zazimováno",
 };
 export const dynamic = "force-dynamic";
 type Query = {

@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   Settings,
   ScrollText,
+  ScanSearch,
 } from "lucide-react";
 import { ModulePage } from "@/components/module-page";
 const tiles = [
@@ -19,6 +20,7 @@ const tiles = [
   ["Předpisy a pravidla", "/pravidla", ShieldCheck],
   ["Nastavení systému", "/administrace/nastaveni", Settings],
   ["Audit log", "/administrace/audit", ScrollText],
+  ["Kontrola dat", "/administrace/kontrola-dat", ScanSearch],
 ] as const;
 export default function Page() {
   return (

@@ -17,6 +17,7 @@ enum EquipmentStatus {
   IN_STOCK
   RETIRED
   LOST
+  WINTERIZED
 }
 
 enum ComplianceStatus {
@@ -73,6 +74,21 @@ enum IntervalUnit {
   WEEKS
   MONTHS
   YEARS
+  OPERATING_HOURS
+  USAGE_COUNT
+}
+
+enum RequirementTrigger {
+  PERIODIC
+  BEFORE_COMMISSIONING
+  BEFORE_USE
+  AFTER_USE
+  AFTER_UNUSUAL_USE
+  AFTER_REPAIR
+  AFTER_REVISION
+  SHIFT_HANDOVER
+  ON_DOUBT
+  ON_BROKEN_SEAL
 }
 
 enum InspectionLevel {
@@ -164,19 +180,21 @@ model Vehicle {
 }
 
 model User {
-  id             String              @id @default(cuid())
-  username       String              @unique
+  id             String                  @id @default(cuid())
+  username       String                  @unique
   displayName    String
   passwordHash   String
-  active         Boolean             @default(true)
+  active         Boolean                 @default(true)
   organizationId String
-  organization   Organization        @relation(fields: [organizationId], references: [id])
+  organization   Organization            @relation(fields: [organizationId], references: [id])
   roles          UserRole[]
   sessions       Session[]
   qualifications UserQualification[]
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
   importJobs     ImportJob[]
+  meterReadings  EquipmentMeterReading[]
+  operatingLogs  EquipmentOperatingLog[]
 }
 
 model Session {
@@ -276,6 +294,11 @@ model EquipmentItem {
   importedAt              DateTime?
   importJobId             String?
   needsReview             Boolean                    @default(false)
+  currentOperatingHours   Decimal?                   @db.Decimal(12, 2)
+  operatingHoursReadAt    DateTime?
+  usageCount              Int                        @default(0)
+  commissionedAt          DateTime?
+  passportReference       String?
   manufacturedAt          DateTime?
   manufacturedYear        Int?
   acquiredAt              DateTime?
@@ -300,6 +323,8 @@ model EquipmentItem {
   statusHistory           EquipmentStatusHistory[]
   locationHistory         EquipmentLocationHistory[]
   inspections             Inspection[]
+  operatingLogs           EquipmentOperatingLog[]
+  meterReadings           EquipmentMeterReading[]
   defects                 Defect[]
   legacyProtocols         Protocol[]
   createdById             String?
@@ -346,6 +371,8 @@ model SourceDocument {
   seedKey        String?        @unique
   title          String
   documentNumber String?
+  version        String?
+  issuer         String?
   sourceType     RuleSourceType
   effectiveFrom  DateTime?
   effectiveTo    DateTime?
@@ -362,6 +389,8 @@ model Rule {
   sourceDocumentId   String?
   categoryId         String?
   equipmentId        String?
+  targetKey          String?
+  targetLabel        String?
   active             Boolean                @default(true)
   sourceDocument     SourceDocument?        @relation(fields: [sourceDocumentId], references: [id])
   category           EquipmentCategory?     @relation(fields: [categoryId], references: [id])
@@ -369,6 +398,7 @@ model Rule {
   directRequirements EquipmentRequirement[] @relation("RequirementSourceRule")
 
   @@index([categoryId, active])
+  @@index([targetKey, active])
 }
 
 model RuleVersion {
@@ -383,6 +413,8 @@ model RuleVersion {
   validTo                    DateTime?
   intervalValue              Int?
   intervalUnit               IntervalUnit?
+  trigger                    RequirementTrigger     @default(PERIODIC)
+  performedBy                String?
   exactDate                  DateTime?
   conditionJson              Json?
   manufacturer               String?
@@ -402,28 +434,33 @@ model RuleVersion {
 }
 
 model EquipmentRequirement {
-  id               String                        @id @default(cuid())
-  equipmentId      String
-  ruleVersionId    String?
-  type             RequirementType
-  name             String
-  intervalValue    Int?
-  intervalUnit     IntervalUnit?
-  lastCompletedAt  DateTime?
-  nextDueAt        DateTime?
-  status           ComplianceStatus              @default(UNDEFINED)
-  source           String?
-  sourceType       RuleSourceType?
-  sourceRuleId     String?
-  note             String?
-  needsReview      Boolean                       @default(false)
-  archivedAt       DateTime?
-  manuallyResolved Boolean                       @default(false)
-  resolutionReason String?
-  equipment        EquipmentItem                 @relation(fields: [equipmentId], references: [id])
-  ruleVersion      RuleVersion?                  @relation(fields: [ruleVersionId], references: [id])
-  sourceRule       Rule?                         @relation("RequirementSourceRule", fields: [sourceRuleId], references: [id])
-  history          EquipmentRequirementHistory[]
+  id                 String                        @id @default(cuid())
+  equipmentId        String
+  ruleVersionId      String?
+  type               RequirementType
+  name               String
+  intervalValue      Int?
+  intervalUnit       IntervalUnit?
+  trigger            RequirementTrigger            @default(PERIODIC)
+  performedBy        String?
+  nextOperatingHours Decimal?                      @db.Decimal(12, 2)
+  nextUsageCount     Int?
+  lastCompletedAt    DateTime?
+  nextDueAt          DateTime?
+  status             ComplianceStatus              @default(UNDEFINED)
+  source             String?
+  sourceType         RuleSourceType?
+  sourceRuleId       String?
+  note               String?
+  needsReview        Boolean                       @default(false)
+  archivedAt         DateTime?
+  manuallyResolved   Boolean                       @default(false)
+  resolutionReason   String?
+  equipment          EquipmentItem                 @relation(fields: [equipmentId], references: [id])
+  ruleVersion        RuleVersion?                  @relation(fields: [ruleVersionId], references: [id])
+  sourceRule         Rule?                         @relation("RequirementSourceRule", fields: [sourceRuleId], references: [id])
+  history            EquipmentRequirementHistory[]
+  inspections        Inspection[]
 
   @@index([equipmentId, nextDueAt])
   @@index([equipmentId, archivedAt])
@@ -478,23 +515,26 @@ model ChecklistSection {
 }
 
 model ChecklistItem {
-  id                String           @id @default(cuid())
-  sectionId         String
-  label             String
-  responseType      String
-  required          Boolean          @default(false)
-  failRequiresNote  Boolean          @default(false)
-  failRequiresPhoto Boolean          @default(false)
-  failCreatesDefect Boolean          @default(false)
-  unit              String?
-  optionsJson       Json?
-  sortOrder         Int
-  section           ChecklistSection @relation(fields: [sectionId], references: [id])
+  id                 String           @id @default(cuid())
+  sectionId          String
+  label              String
+  responseType       String
+  required           Boolean          @default(false)
+  allowNotApplicable Boolean          @default(false)
+  naRequiresReason   Boolean          @default(false)
+  failRequiresNote   Boolean          @default(false)
+  failRequiresPhoto  Boolean          @default(false)
+  failCreatesDefect  Boolean          @default(false)
+  unit               String?
+  optionsJson        Json?
+  sortOrder          Int
+  section            ChecklistSection @relation(fields: [sectionId], references: [id])
 }
 
 model Inspection {
   id                 String                   @id @default(cuid())
   equipmentId        String
+  requirementId      String?
   inspectorId        String
   checklistVersionId String
   inspectionType     String
@@ -504,12 +544,51 @@ model Inspection {
   startedAt          DateTime                 @default(now())
   completedAt        DateTime?
   note               String?
+  correctionOfId     String?
+  correctionReason   String?
   snapshot           Json?
   equipment          EquipmentItem            @relation(fields: [equipmentId], references: [id])
+  requirement        EquipmentRequirement?    @relation(fields: [requirementId], references: [id])
+  correctionOf       Inspection?              @relation("InspectionCorrections", fields: [correctionOfId], references: [id])
+  corrections        Inspection[]             @relation("InspectionCorrections")
   checklistVersion   ChecklistTemplateVersion @relation(fields: [checklistVersionId], references: [id])
   responses          InspectionResponse[]
   protocol           Protocol?
   defects            Defect[]
+  operatingLogs      EquipmentOperatingLog[]
+
+  @@index([requirementId, completedAt])
+}
+
+model EquipmentMeterReading {
+  id             String        @id @default(cuid())
+  equipmentId    String
+  operatingHours Decimal       @db.Decimal(12, 2)
+  readAt         DateTime
+  recordedById   String
+  note           String?
+  equipment      EquipmentItem @relation(fields: [equipmentId], references: [id])
+  recordedBy     User          @relation(fields: [recordedById], references: [id])
+
+  @@index([equipmentId, readAt])
+}
+
+model EquipmentOperatingLog {
+  id                   String        @id @default(cuid())
+  equipmentId          String
+  date                 DateTime
+  operatingHours       Decimal       @db.Decimal(12, 2)
+  hoursDelta           Decimal       @db.Decimal(12, 2)
+  userId               String
+  note                 String?
+  linkedInspectionId   String?
+  linkedServiceEventId String?
+  equipment            EquipmentItem @relation(fields: [equipmentId], references: [id])
+  user                 User          @relation(fields: [userId], references: [id])
+  linkedInspection     Inspection?   @relation(fields: [linkedInspectionId], references: [id])
+  linkedServiceEvent   ServiceEvent? @relation(fields: [linkedServiceEventId], references: [id])
+
+  @@index([equipmentId, date])
 }
 
 model InspectionResponse {
@@ -539,10 +618,13 @@ model Protocol {
   correctionOfId     String?
   inspection         Inspection?            @relation(fields: [inspectionId], references: [id])
   equipment          EquipmentItem?         @relation(fields: [equipmentId], references: [id])
+  correctionOf       Protocol?              @relation("ProtocolCorrections", fields: [correctionOfId], references: [id])
+  corrections        Protocol[]             @relation("ProtocolCorrections")
   rules              ProtocolRuleSnapshot[]
 
   @@index([equipmentId, createdAt])
   @@index([importJobId])
+  @@index([correctionOfId])
 }
 
 model ProtocolRuleSnapshot {
@@ -581,16 +663,17 @@ model ServiceCase {
 }
 
 model ServiceEvent {
-  id              String            @id @default(cuid())
+  id              String                  @id @default(cuid())
   serviceCaseId   String
   status          ServiceCaseStatus
   description     String
   externalCompany String?
   partsJson       Json?
-  price           Decimal?          @db.Decimal(12, 2)
+  price           Decimal?                @db.Decimal(12, 2)
   performedById   String
-  createdAt       DateTime          @default(now())
-  serviceCase     ServiceCase       @relation(fields: [serviceCaseId], references: [id])
+  createdAt       DateTime                @default(now())
+  serviceCase     ServiceCase             @relation(fields: [serviceCaseId], references: [id])
+  operatingLogs   EquipmentOperatingLog[]
 }
 
 model Task {

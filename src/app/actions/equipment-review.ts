@@ -15,6 +15,7 @@ const statuses = [
   "IN_STOCK",
   "RETIRED",
   "LOST",
+  "WINTERIZED",
 ] as const;
 const types = [
   "INSPECTION",
@@ -24,7 +25,7 @@ const types = [
   "LIFETIME",
   "EXPIRATION",
 ] as const;
-const units = ["DAYS", "WEEKS", "MONTHS", "YEARS"] as const;
+const units = ["DAYS", "WEEKS", "MONTHS", "YEARS", "OPERATING_HOURS", "USAGE_COUNT"] as const;
 const itemSchema = z.object({
   equipmentId: z.string().min(1),
   name: z.string().trim().min(2),

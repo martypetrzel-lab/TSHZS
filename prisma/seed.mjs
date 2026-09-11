@@ -1,5 +1,6 @@
 import { hash } from "bcryptjs";
 import { PrismaClient, RuleSourceType } from "@prisma/client";
+import { CEPRO_CHECKLISTS, CEPRO_RULES, CEPRO_SOURCE } from "./cepro-methodology.mjs";
 
 const db = new PrismaClient();
 
@@ -87,10 +88,53 @@ async function seedMasterData() {
     ] } },
   });
 
+  await seedCeproMethodology();
+
   for (const [code, name] of [["ADMIN", "Administrátor"], ["TS_ADMIN", "Vedoucí technické služby"], ["TECHNICIAN", "Technik"], ["USER", "Uživatel"]]) {
     await db.role.upsert({ where: { code }, update: { name }, create: { code, name } });
   }
   return organization;
+}
+
+async function seedCeproMethodology() {
+  const source = await adoptSeededRecord(db.sourceDocument, CEPRO_SOURCE.seedKey, {
+    documentNumber: CEPRO_SOURCE.documentNumber,
+    version: CEPRO_SOURCE.version,
+  }, { ...CEPRO_SOURCE, sourceType: RuleSourceType.INTERNAL_CEPRO });
+  await db.sourceDocument.update({
+    where: { id: source.id },
+    data: { title: CEPRO_SOURCE.title, documentNumber: CEPRO_SOURCE.documentNumber, version: CEPRO_SOURCE.version, issuer: CEPRO_SOURCE.issuer, effectiveFrom: CEPRO_SOURCE.effectiveFrom, sourceType: RuleSourceType.INTERNAL_CEPRO },
+  });
+
+  const checklistVersions = new Map();
+  for (const [key, name, items] of CEPRO_CHECKLISTS) {
+    const template = await adoptSeededRecord(db.checklistTemplate, `cepro:${key}`, { name }, { name });
+    const version = await db.checklistTemplateVersion.upsert({
+      where: { templateId_version: { templateId: template.id, version: 1 } }, update: {},
+      create: { templateId: template.id, version: 1, validFrom: CEPRO_SOURCE.effectiveFrom, sections: { create: { title: "Pracovní parametry metodiky", sortOrder: 1, items: { create: items.map((label, sortOrder) => ({ label, responseType: label.includes("MPa") || label.includes("minut") ? "MEASUREMENT" : "PASS_FAIL", required: true, allowNotApplicable: false, naRequiresReason: false, failRequiresNote: true, failCreatesDefect: true, optionsJson: label.includes("Zkouška systému") ? { stopWhenPreviousVisualCheckFailed: true } : undefined, sortOrder })) } } } },
+    });
+    checklistVersions.set(key, version.id);
+  }
+
+  const checklistFor = (targetKey, name) => {
+    if (targetKey === "LADDER") return "ladder";
+    if (["LIFTING_BAG","PIPE_PLUG","SEALING_BAG"].includes(targetKey)) return "bag";
+    if (targetKey === "FIRE_PUMP") return name.includes("sání") ? "pump-suction" : name.includes("nejvyšší") ? "pump-pressure" : "pump-weekly";
+    return ({SUCTION_HOSE:"suction-hose",HEIGHT_WORK:"height",BOAT_ENGINE:"boat-engine",FIREFIGHTER_PPE:"ppe",HELMET:"helmet",AED:"aed",THERMAL_CAMERA:"thermal-camera",COMPRESSOR:"compressor",COMPRESSOR_ASTRA:"compressor",COMPRESSOR_TRIDENT:"compressor",WATER_RESCUE:"water-rescue"})[targetKey];
+  };
+  for (const entry of CEPRO_RULES) {
+    const seedKey = `cepro:${entry.targetKey}:${entry.name}:${entry.trigger}:${entry.intervalValue ?? "event"}:${entry.intervalUnit ?? "none"}:${entry.performedBy}`.toLowerCase().replaceAll(" ", "-");
+    const found = await adoptSeededRecord(db.rule, seedKey, { name: entry.name, sourceDocumentId: source.id, targetKey: entry.targetKey }, {
+      name: entry.name, requirementType: entry.type, sourceType: RuleSourceType.INTERNAL_CEPRO, sourceDocumentId: source.id, targetKey: entry.targetKey, targetLabel: entry.targetLabel,
+    });
+    await db.rule.update({ where: { id: found.id }, data: { name: entry.name, requirementType: entry.type, sourceType: RuleSourceType.INTERNAL_CEPRO, sourceDocumentId: source.id, targetKey: entry.targetKey, targetLabel: entry.targetLabel, active: true } });
+    const checklistKey = checklistFor(entry.targetKey, entry.name);
+    await db.ruleVersion.upsert({
+      where: { ruleId_version: { ruleId: found.id, version: 1 } },
+      update: { validFrom: CEPRO_SOURCE.effectiveFrom, intervalValue: entry.intervalValue, intervalUnit: entry.intervalUnit, trigger: entry.trigger, performedBy: entry.performedBy, article: entry.article ?? null, note: entry.note ?? "Požadavky výrobce stanovené odlišně nebo nad rámec metodiky zůstávají současně platné.", checklistTemplateVersionId: checklistKey ? checklistVersions.get(checklistKey) : null },
+      create: { ruleId: found.id, version: 1, validFrom: CEPRO_SOURCE.effectiveFrom, intervalValue: entry.intervalValue, intervalUnit: entry.intervalUnit, trigger: entry.trigger, performedBy: entry.performedBy, article: entry.article ?? null, note: entry.note ?? "Požadavky výrobce stanovené odlišně nebo nad rámec metodiky zůstávají současně platné.", checklistTemplateVersionId: checklistKey ? checklistVersions.get(checklistKey) : null },
+    });
+  }
 }
 
 async function seedInitialAdmin(organizationId) {

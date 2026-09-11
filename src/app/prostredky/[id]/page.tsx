@@ -12,6 +12,7 @@ import { AppShell } from "@/components/app-shell";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canEditEquipment } from "@/lib/permissions";
+import { recordOperatingHours } from "@/app/actions/operating-log";
 export const dynamic = "force-dynamic";
 const statuses: Record<string, string> = {
   IN_SERVICE: "V PROVOZU",
@@ -23,6 +24,7 @@ const statuses: Record<string, string> = {
   IN_STOCK: "SKLAD",
   RETIRED: "VYŘAZENO",
   LOST: "ZTRACENO",
+  WINTERIZED: "ZAZIMOVÁNO",
 };
 export default async function EquipmentDetail({
   params,
@@ -51,6 +53,7 @@ export default async function EquipmentDetail({
       defects: { where: { closedAt: null } },
       components: true,
       statusHistory: { orderBy: { changedAt: "desc" }, take: 5 },
+      operatingLogs: { orderBy: { date: "desc" }, take: 20 },
     },
   });
   if (!item) notFound();
@@ -143,6 +146,7 @@ export default async function EquipmentDetail({
             </small>
           </div>
         )}
+        {(item.currentOperatingHours !== null || item.requirements.some(r=>r.intervalUnit === "OPERATING_HOURS")) && <section className="card operating-card"><div className="panel-head"><h2>Provozní deník a motohodiny</h2><strong>{item.currentOperatingHours?.toString() ?? "0"} mh</strong></div>{canEdit&&<form action={recordOperatingHours} className="operating-form"><input type="hidden" name="equipmentId" value={item.id}/><label>Datum<input type="date" name="date" required defaultValue={new Date().toISOString().slice(0,10)}/></label><label>Stav motohodin<input type="number" min={Number(item.currentOperatingHours??0)} step="0.01" name="operatingHours" required/></label><label>Poznámka<input name="note"/></label><button className="button">Uložit odečet</button></form>}<div className="panel-body">{item.operatingLogs.map(log=><div className="history-row" key={log.id}><span>{log.date.toLocaleDateString("cs-CZ")}</span><strong>{log.operatingHours.toString()} mh</strong><span>+{log.hoursDelta.toString()} mh</span><span>{log.note??"—"}</span></div>)}</div></section>}
         <section className="dashboard-grid">
           <div className="card">
             <div className="panel-head">
@@ -240,6 +244,8 @@ export default async function EquipmentDetail({
                     WEEKS: "týdnů",
                     MONTHS: "měsíců",
                     YEARS: "let",
+                    OPERATING_HOURS: "motohodin",
+                    USAGE_COUNT: "použití",
                   }[requirement.intervalUnit ?? "DAYS"];
                   return (
                     <tr key={requirement.id}>
@@ -251,7 +257,9 @@ export default async function EquipmentDetail({
                             : requirement.name}
                       </td>
                       <td>
-                        {requirement.intervalValue
+                        {requirement.trigger !== "PERIODIC"
+                          ? "Při události"
+                          : requirement.intervalValue
                           ? `${requirement.intervalValue} ${unit}`
                           : "—"}
                       </td>
@@ -261,8 +269,11 @@ export default async function EquipmentDetail({
                         ) ?? "—"}
                       </td>
                       <td>
-                        {requirement.nextDueAt?.toLocaleDateString("cs-CZ") ??
-                          "—"}
+                        {requirement.intervalUnit === "OPERATING_HOURS"
+                          ? requirement.nextOperatingHours ? `${requirement.nextOperatingHours} mh` : "Doplnit odečet"
+                          : requirement.intervalUnit === "USAGE_COUNT"
+                            ? requirement.nextUsageCount ?? "Doplnit počet"
+                            : requirement.trigger !== "PERIODIC" ? "Aktivuje událost" : requirement.nextDueAt?.toLocaleDateString("cs-CZ") ?? "—"}
                       </td>
                       <td>
                         {remaining === null
