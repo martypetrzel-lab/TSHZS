@@ -5,11 +5,45 @@ import { describe, expect, it } from "vitest";
 import {
   formatProtocolDate,
   formatProtocolInterval,
+  protocolDownloadFilename,
   protocolResultLabel,
   renderProtocolPdf,
 } from "./protocol-pdf";
 
 describe("český PDF protokol", () => {
+  it("pojmenuje soubor podle historického názvu prostředku", () =>
+    expect(
+      protocolDownloadFilename(
+        { equipment: { name: "Nastavovací žebřík 4-dílný" } },
+        "TS-MST-2026-000004",
+      ),
+    ).toBe("Nastavovaci-zebrik-4-dilny_TS-MST-2026-000004.pdf"));
+
+  it("odstraní nepovolené znaky a sloučí oddělovače", () =>
+    expect(
+      protocolDownloadFilename(
+        { equipment: { name: ' Deflektor: C52 / PHA ** "test" ' } },
+        "TS-MST-2026-000003",
+      ),
+    ).toBe("Deflektor-C52-PHA-test_TS-MST-2026-000003.pdf"));
+
+  it("při chybějícím názvu použije UID ze snapshotu", () =>
+    expect(
+      protocolDownloadFilename(
+        { equipment: { uid: "UID-70C2B057" } },
+        "TS-MST-2026-000005",
+      ),
+    ).toBe("Technicky-prostredek-UID-70C2B057_TS-MST-2026-000005.pdf"));
+
+  it("omezí pouze název prostředku a zachová celé číslo protokolu", () => {
+    const protocol = "TS-MST-2026-000006";
+    const filename = protocolDownloadFilename(
+      { equipment: { name: "A".repeat(120) } },
+      protocol,
+    );
+    expect(filename).toBe(`${"A".repeat(80)}_${protocol}.pdf`);
+  });
+
   it.each([
     [1, "MONTHS", "1 měsíc"],
     [6, "MONTHS", "6 měsíců"],

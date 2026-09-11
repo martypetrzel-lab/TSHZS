@@ -64,6 +64,28 @@ const text = (value: unknown, fallback = "—") => {
   return normalized || fallback;
 };
 
+function filenamePart(value: unknown, maxLength: number) {
+  return String(value ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, maxLength)
+    .replace(/-+$/g, "");
+}
+
+export function protocolDownloadFilename(
+  snapshot: ProtocolSnapshot,
+  protocolNumber: string,
+) {
+  const equipmentName = filenamePart(snapshot.equipment?.name, 80);
+  const uid = filenamePart(snapshot.equipment?.uid, 80);
+  const base = equipmentName || `Technicky-prostredek-${uid || "bez-UID"}`;
+  return `${base}_${protocolNumber}.pdf`;
+}
+
 export function formatProtocolDate(value: unknown, withTime = false) {
   if (!value) return "—";
   const date = new Date(String(value));

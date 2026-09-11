@@ -2,7 +2,11 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { renderProtocolPdf, type ProtocolSnapshot } from "@/lib/protocol-pdf";
+import {
+  protocolDownloadFilename,
+  renderProtocolPdf,
+  type ProtocolSnapshot,
+} from "@/lib/protocol-pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -32,16 +36,17 @@ export async function GET(
       readFile(fontPath(400)),
       readFile(fontPath(700)),
     ]);
+    const snapshot = protocol.snapshot as ProtocolSnapshot;
     const bytes = await renderProtocolPdf({
       number: protocol.number,
-      snapshot: protocol.snapshot as ProtocolSnapshot,
+      snapshot,
       regularFont,
       boldFont,
     });
     return new Response(Buffer.from(bytes), {
       headers: {
         "content-type": "application/pdf",
-        "content-disposition": `attachment; filename="${protocol.number}.pdf"`,
+        "content-disposition": `attachment; filename="${protocolDownloadFilename(snapshot, protocol.number)}"`,
         "cache-control": "private, no-store",
       },
     });
