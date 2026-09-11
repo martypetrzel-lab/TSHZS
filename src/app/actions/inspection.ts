@@ -1,229 +1,806 @@
 "use server";
+
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireEquipmentEditor } from "@/lib/authorization";
+import type { Prisma } from "@prisma/client";
+import { requireInspectionOperator } from "@/lib/authorization";
 import { prisma } from "@/lib/prisma";
 import { addCalendarInterval, nextOperatingThreshold } from "@/lib/rule-engine";
 import {
-  equipmentOutcome,
+  calculateInspectionResult,
+  isFailedAnswer,
   validateChecklistCompletion,
+  type ChecklistAnswer,
 } from "@/lib/inspection-records";
+import { getStorage } from "@/lib/storage";
 
-export async function closeInspection(formData: FormData) {
-  const user = await requireEquipmentEditor(),
-    requirementId = String(formData.get("requirementId") ?? ""),
-    checklistVersionId = String(formData.get("checklistVersionId") ?? ""),
-    result = String(formData.get("result") ?? "") as
-      "PASSED" | "FAILED" | "PASSED_WITH_LIMITATION";
+const detailInclude = {
+  equipment: { include: { vehicle: true, location: true, category: true } },
+  ruleVersion: { include: { rule: { include: { sourceDocument: true } } } },
+  sourceRule: { include: { sourceDocument: true } },
+} as const;
+
+function levelFor(performedBy?: string | null) {
+  return performedBy?.toLocaleLowerCase("cs").includes("uživatel")
+    ? ("USER" as const)
+    : ("PROFESSIONAL" as const);
+}
+
+function assertAuthorized(
+  user: Awaited<ReturnType<typeof requireInspectionOperator>>,
+  requirement: {
+    performedBy: string | null;
+    ruleVersion: { qualificationId: string | null } | null;
+  },
+) {
+  const roles = new Set(user.roles.map((r) => r.role.code));
+  const professional = levelFor(requirement.performedBy) === "PROFESSIONAL";
   if (
-    !requirementId ||
-    !checklistVersionId ||
-    !["PASSED", "FAILED", "PASSED_WITH_LIMITATION"].includes(result)
+    professional &&
+    !["ADMIN", "TS_ADMIN", "TECHNICIAN"].some((r) => roles.has(r))
   )
-    redirect(`/kontroly?chyba=Neplatné+zadání`);
-  const requirement = await prisma.equipmentRequirement.findUnique({
-    where: { id: requirementId },
-    include: {
-      equipment: true,
-      ruleVersion: { include: { rule: true } },
-      sourceRule: true,
-    },
-  });
-  if (!requirement) redirect("/kontroly?chyba=Povinnost+neexistuje");
-  const version = await prisma.checklistTemplateVersion.findUnique({
-    where: { id: checklistVersionId },
-    include: {
-      template: true,
-      sections: {
-        orderBy: { sortOrder: "asc" },
-        include: { items: { orderBy: { sortOrder: "asc" } } },
-      },
-    },
-  });
-  if (!version)
-    redirect(
-      `/kontroly?equipmentId=${requirement.equipmentId}&requirementId=${requirement.id}&chyba=Checklist+neexistuje`,
+    throw new Error("Odbornou kontrolu smí provést pouze oprávněný technik.");
+  const external = /extern|výrobce|servisní organizace|revizní technik/i.test(
+    requirement.performedBy ?? "",
+  );
+  if (external)
+    throw new Error(
+      "Tuto povinnost provádí externí odborný subjekt a nelze ji uzavřít jako vlastní kontrolu.",
     );
-  const items = version.sections.flatMap((s) => s.items);
-  const answers = items.map((item) => {
-    const raw = String(formData.get(`answer-${item.id}`) ?? "").trim(),
-      na = formData.get(`na-${item.id}`) === "on",
-      reason = String(formData.get(`reason-${item.id}`) ?? "");
-    return {
-      item,
-      required: item.required,
-      allowNotApplicable: item.allowNotApplicable,
-      value: raw || undefined,
-      notApplicable: na,
-      reason,
-    };
-  });
-  const validation = validateChecklistCompletion(answers);
-  if (!validation.valid)
-    redirect(
-      `/kontroly?equipmentId=${requirement.equipmentId}&requirementId=${requirement.id}&chyba=${encodeURIComponent("Vyplňte všechny povinné pracovní parametry; NERELEVANTNÍ vyžaduje povolení a důvod.")}`,
-    );
-  const now = new Date(),
-    outcome = equipmentOutcome(
-      result,
-      formData.get("criticalParameterFailed") === "on",
-    );
-  let nextDueAt: Date | null = null,
-    nextOperatingHours: number | null = null,
-    nextUsageCount: number | null = null;
+  const qualificationId = requirement.ruleVersion?.qualificationId;
   if (
-    result !== "FAILED" &&
-    requirement.intervalValue &&
-    requirement.trigger === "PERIODIC"
-  ) {
-    if (
-      requirement.intervalUnit &&
-      ["DAYS", "WEEKS", "MONTHS", "YEARS"].includes(requirement.intervalUnit)
+    qualificationId &&
+    !user.qualifications.some(
+      (q) =>
+        q.qualification.id === qualificationId &&
+        (!q.validUntil || q.validUntil >= new Date()),
     )
-      nextDueAt = addCalendarInterval(
-        now,
-        requirement.intervalValue,
-        requirement.intervalUnit as "DAYS" | "WEEKS" | "MONTHS" | "YEARS",
-      );
-    else if (requirement.intervalUnit === "OPERATING_HOURS")
-      nextOperatingHours = nextOperatingThreshold(
-        Number(requirement.equipment.currentOperatingHours ?? 0),
-        requirement.intervalValue,
-      );
-    else if (requirement.intervalUnit === "USAGE_COUNT")
-      nextUsageCount =
-        requirement.equipment.usageCount + requirement.intervalValue;
-  }
-  const inspectionId = randomUUID(),
-    protocolId = randomUUID(),
-    number = `TSHZS-${now.getFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`;
-  const snapshot = {
-    equipment: {
-      id: requirement.equipment.id,
-      uid: requirement.equipment.uid,
-      name: requirement.equipment.name,
-    },
-    requirement: {
-      id: requirement.id,
-      name: requirement.name,
-      source: requirement.source,
-      type: requirement.type,
-    },
-    checklist: {
-      id: version.id,
-      name: version.template.name,
-      version: version.version,
-    },
-    answers: answers.map((a) => ({
-      checklistItemId: a.item.id,
-      label: a.item.label,
-      value: a.notApplicable ? "NERELEVANTNÍ" : a.value,
-      reason: a.reason || null,
-    })),
-    result,
-    completedAt: now.toISOString(),
-  };
-  await prisma.$transaction(async (tx) => {
-    await tx.inspection.create({
-      data: {
-        id: inspectionId,
-        equipmentId: requirement.equipmentId,
-        requirementId: requirement.id,
+  )
+    throw new Error("Nemáte platnou kvalifikaci požadovanou tímto pravidlem.");
+}
+
+async function loadRequirement(id: string) {
+  const requirement = await prisma.equipmentRequirement.findUnique({
+    where: { id },
+    include: detailInclude,
+  });
+  if (
+    !requirement ||
+    requirement.archivedAt ||
+    requirement.type !== "INSPECTION"
+  )
+    throw new Error("Kontrolní povinnost neexistuje nebo není aktivní.");
+  if (!requirement.ruleVersion?.checklistTemplateVersionId)
+    throw new Error("Pro tuto povinnost není vytvořena kontrolní šablona.");
+  return requirement;
+}
+
+export async function startInspection(formData: FormData) {
+  const user = await requireInspectionOperator();
+  const requirementId = String(formData.get("requirementId") ?? "");
+  const identityVerified = formData.get("identityVerified") === "on";
+  if (!identityVerified)
+    redirect(
+      `/kontroly/provest/${requirementId}?chyba=${encodeURIComponent("Nejprve potvrďte ověření identifikace prostředku.")}`,
+    );
+  try {
+    const requirement = await loadRequirement(requirementId);
+    assertAuthorized(user, requirement);
+    const existing = await prisma.inspection.findFirst({
+      where: {
         inspectorId: user.id,
-        checklistVersionId: version.id,
-        inspectionType: requirement.name,
-        level: "PROFESSIONAL",
-        state: "CLOSED",
-        result,
-        completedAt: now,
-        note: String(formData.get("note") ?? "") || null,
-        snapshot,
-        responses: {
-          create: answers.map((a) => ({
-            checklistItemId: a.item.id,
-            valueJson: a.notApplicable
-              ? { state: "NERELEVANTNI", reason: a.reason }
-              : { value: a.value },
-            note: a.reason || null,
-          })),
-        },
-      },
-    });
-    await tx.protocol.create({
-      data: {
-        id: protocolId,
-        number,
-        inspectionId,
         equipmentId: requirement.equipmentId,
-        snapshot,
-        rules: requirement.ruleVersionId
-          ? {
-              create: {
-                ruleVersionId: requirement.ruleVersionId,
-                snapshot: {
-                  ruleId: requirement.sourceRuleId,
-                  name: requirement.name,
-                  source: requirement.source,
-                  intervalValue: requirement.intervalValue,
-                  intervalUnit: requirement.intervalUnit,
-                },
-              },
-            }
-          : undefined,
+        requirementId,
+        state: "DRAFT",
       },
     });
-    await tx.equipmentRequirementHistory.create({
-      data: {
-        requirementId: requirement.id,
-        lastCompletedAt: now,
-        nextDueAt,
-        intervalValue: requirement.intervalValue,
-        intervalUnit: requirement.intervalUnit,
-        status: outcome.createDefect ? "OVERDUE_BLOCKED" : "COMPLIANT",
-        source: requirement.source,
-        note: `Uzavřen protokol ${number}`,
-        recordedById: user.id,
-      },
-    });
-    await tx.equipmentRequirement.update({
-      where: { id: requirement.id },
-      data: {
-        lastCompletedAt: now,
-        nextDueAt,
-        nextOperatingHours,
-        nextUsageCount,
-        status: outcome.createDefect ? "OVERDUE_BLOCKED" : "COMPLIANT",
-      },
-    });
-    if (outcome.createDefect) {
-      await tx.defect.create({
+    if (existing)
+      redirect(`/kontroly/provest/${requirementId}?draft=${existing.id}`);
+    const draft = await prisma.$transaction(async (tx) => {
+      const created = await tx.inspection.create({
         data: {
           equipmentId: requirement.equipmentId,
-          inspectionId,
-          reportedById: user.id,
-          description: `Nevyhovující výsledek: ${requirement.name}`,
-          severity: "CRITICAL",
+          requirementId,
+          inspectorId: user.id,
+          checklistVersionId:
+            requirement.ruleVersion!.checklistTemplateVersionId!,
+          inspectionType: requirement.name,
+          level: levelFor(requirement.performedBy),
+          identityVerifiedAt: new Date(),
         },
       });
-      await tx.equipmentItem.update({
-        where: { id: requirement.equipmentId },
-        data: { status: "OUT_OF_SERVICE", complianceStatus: "OVERDUE_BLOCKED" },
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          action: "INSPECTION_STARTED",
+          entityType: "Inspection",
+          entityId: created.id,
+          newValue: { equipmentId: requirement.equipmentId, requirementId },
+        },
+      });
+      return created;
+    });
+    redirect(`/kontroly/provest/${requirementId}?draft=${draft.id}`);
+  } catch (error) {
+    if (error && typeof error === "object" && "digest" in error) throw error;
+    redirect(
+      `/kontroly/provest/${requirementId}?chyba=${encodeURIComponent(error instanceof Error ? error.message : "Kontrolu nelze zahájit.")}`,
+    );
+  }
+}
+
+async function draftContext(draftId: string, userId: string) {
+  const draft = await prisma.inspection.findUnique({
+    where: { id: draftId },
+    include: {
+      requirement: { include: detailInclude },
+      checklistVersion: {
+        include: {
+          template: true,
+          sections: {
+            orderBy: { sortOrder: "asc" as const },
+            include: { items: { orderBy: { sortOrder: "asc" as const } } },
+          },
+        },
+      },
+      responses: true,
+    },
+  });
+  if (
+    !draft ||
+    draft.state !== "DRAFT" ||
+    draft.inspectorId !== userId ||
+    !draft.requirement
+  )
+    throw new Error(
+      "Rozpracovaná kontrola neexistuje nebo k ní nemáte přístup.",
+    );
+  return draft;
+}
+
+function answerData(
+  formData: FormData,
+  item: {
+    id: string;
+    label: string;
+    responseType: string;
+    required: boolean;
+    allowNotApplicable: boolean;
+    naRequiresReason: boolean;
+    failRequiresNote: boolean;
+    failRequiresPhoto: boolean;
+    failCreatesDefect: boolean;
+    critical: boolean;
+    optionsJson: unknown;
+  },
+) {
+  const raw = formData.get(`answer-${item.id}`);
+  const na = formData.get(`na-${item.id}`) === "on";
+  const reason = String(formData.get(`reason-${item.id}`) ?? "").trim();
+  let value: unknown = raw == null ? undefined : String(raw).trim();
+  if (item.responseType === "NUMBER" || item.responseType === "MEASUREMENT")
+    value = value === "" ? undefined : Number(value);
+  if (item.responseType === "BOOLEAN")
+    value = value === "true" ? true : value === "false" ? false : undefined;
+  const limits = item.optionsJson as {
+    failWhen?: unknown;
+    min?: number;
+    max?: number;
+    targetMin?: number;
+  } | null;
+  const numberValue = typeof value === "number" ? value : null;
+  const failed =
+    numberValue != null &&
+    ((limits?.min != null && numberValue < limits.min) ||
+      (limits?.targetMin != null && numberValue < limits.targetMin) ||
+      (limits?.max != null && numberValue > limits.max));
+  return {
+    id: item.id,
+    label: item.label,
+    responseType: item.responseType,
+    required: item.required,
+    allowNotApplicable: item.allowNotApplicable,
+    naRequiresReason: item.naRequiresReason,
+    failRequiresNote: item.failRequiresNote,
+    failRequiresPhoto: item.failRequiresPhoto,
+    failCreatesDefect: item.failCreatesDefect,
+    critical: item.critical,
+    failureValue: limits?.failWhen,
+    failed,
+    value,
+    notApplicable: na,
+    reason,
+  } satisfies ChecklistAnswer;
+}
+
+async function persistDraft(
+  draftId: string,
+  userId: string,
+  formData: FormData,
+  audit = true,
+) {
+  const draft = await draftContext(draftId, userId);
+  const items = draft.checklistVersion.sections.flatMap((s) => s.items);
+  const answers = items.map((item) => answerData(formData, item));
+  for (const answer of answers) {
+    const files = formData
+      .getAll(`photo-${answer.id}`)
+      .filter((f): f is File => f instanceof File && f.size > 0);
+    if (
+      answer.value == null &&
+      !answer.notApplicable &&
+      !answer.reason &&
+      !files.length
+    )
+      continue;
+    const valueJson = (
+      answer.notApplicable
+        ? { state: "NERELEVANTNI", reason: answer.reason }
+        : answer.value == null
+          ? { uploaded: true }
+          : { value: answer.value }
+    ) as Prisma.InputJsonValue;
+    const response = await prisma.inspectionResponse.upsert({
+      where: {
+        inspectionId_checklistItemId: {
+          inspectionId: draftId,
+          checklistItemId: answer.id!,
+        },
+      },
+      update: { valueJson, note: answer.reason || null },
+      create: {
+        inspectionId: draftId,
+        checklistItemId: answer.id!,
+        valueJson,
+        note: answer.reason || null,
+      },
+    });
+    for (const file of files) {
+      if (!file.type.startsWith("image/"))
+        throw new Error("Příloha kontrolního bodu musí být fotografie.");
+      const stored = await getStorage().put({
+        body: new Uint8Array(await file.arrayBuffer()),
+        fileName: file.name,
+        mimeType: file.type,
+        namespace: `inspections/${draftId}`,
+      });
+      await prisma.attachment.create({
+        data: {
+          ownerType: "InspectionResponse",
+          ownerId: response.id,
+          fileName: file.name,
+          mimeType: file.type,
+          sizeBytes: stored.sizeBytes,
+          storageKey: stored.storageKey,
+          checksumSha256: stored.checksumSha256,
+          uploadedById: userId,
+        },
       });
     }
+  }
+  await prisma.inspection.update({
+    where: { id: draftId },
+    data: {
+      note: String(formData.get("note") ?? "") || null,
+      limitationReason: String(formData.get("limitationReason") ?? "") || null,
+      lockVersion: { increment: 1 },
+    },
+  });
+  if (audit)
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action: "INSPECTION_DRAFT_SAVED",
+        entityType: "Inspection",
+        entityId: draftId,
+        newValue: {
+          answered: answers.filter((a) => a.value != null || a.notApplicable)
+            .length,
+        },
+      },
+    });
+  return { draft, answers };
+}
+
+export async function saveInspectionDraft(formData: FormData) {
+  const user = await requireInspectionOperator();
+  try {
+    await persistDraft(
+      String(formData.get("draftId") ?? ""),
+      user.id,
+      formData,
+    );
+    revalidatePath("/kontroly");
+    return { ok: true, message: "Rozpracovaná kontrola byla uložena." };
+  } catch (error) {
+    console.error("Uložení rozpracované kontroly selhalo", {
+      userId: user.id,
+      error,
+    });
+    return {
+      ok: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Kontrolu se nepodařilo uložit.",
+    };
+  }
+}
+
+export async function closeInspection(formData: FormData) {
+  const user = await requireInspectionOperator();
+  const draftId = String(formData.get("draftId") ?? "");
+  try {
+    if (formData.get("confirmed") !== "on")
+      throw new Error("Před uzavřením potvrďte správnost provedené kontroly.");
+    await persistDraft(draftId, user.id, formData, false);
+    const draft = await draftContext(draftId, user.id);
+    assertAuthorized(user, draft.requirement!);
+    const responseAttachments = await prisma.attachment.findMany({
+      where: {
+        ownerType: "InspectionResponse",
+        ownerId: { in: draft.responses.map((r) => r.id) },
+        archivedAt: null,
+      },
+    });
+    const photoCounts = new Map<string, number>();
+    for (const response of draft.responses)
+      photoCounts.set(
+        response.checklistItemId,
+        responseAttachments.filter((a) => a.ownerId === response.id).length,
+      );
+    const items = draft.checklistVersion.sections.flatMap((s) => s.items);
+    const answers = items.map((item) => ({
+      ...answerData(formData, item),
+      photoCount: photoCounts.get(item.id) ?? 0,
+    }));
+    draft.checklistVersion.sections.forEach((section, index) => {
+      const condition = section.items[0]?.conditionJson as {
+        stopWhenPreviousSectionFailed?: boolean;
+        showWhenAnyFailed?: boolean;
+      } | null;
+      const priorIds = draft.checklistVersion.sections
+        .slice(0, index)
+        .flatMap((s) => s.items.map((item) => item.id));
+      const priorFailed = answers.some(
+        (answer) => priorIds.includes(answer.id!) && isFailedAnswer(answer),
+      );
+      const hidden =
+        (condition?.stopWhenPreviousSectionFailed && priorFailed) ||
+        (condition?.showWhenAnyFailed &&
+          !answers.some(
+            (answer) =>
+              isFailedAnswer(answer) &&
+              !section.items.some((item) => item.id === answer.id),
+          ));
+      if (hidden)
+        for (const answer of answers.filter((a) =>
+          section.items.some((item) => item.id === a.id),
+        )) {
+          answer.required = false;
+          answer.notApplicable = true;
+          answer.allowNotApplicable = true;
+        }
+    });
+    const validation = validateChecklistCompletion(answers);
+    if (!validation.valid)
+      throw new Error(
+        "Doplňte všechny povinné body, požadované důvody a fotografie.",
+      );
+    const result = calculateInspectionResult(answers, draft.checklistVersion);
+    const limitationReason = String(
+      formData.get("limitationReason") ?? "",
+    ).trim();
+    if (result === "PASSED_WITH_LIMITATION" && !limitationReason)
+      throw new Error(
+        "U výsledku Vyhovuje s omezením je důvod omezení povinný.",
+      );
+    const now = new Date();
+    let nextDueAt: Date | null = null,
+      nextOperatingHours: number | null = null,
+      nextUsageCount: number | null = null;
+    if (
+      result !== "FAILED" &&
+      draft.requirement!.intervalValue &&
+      draft.requirement!.trigger === "PERIODIC"
+    ) {
+      const unit = draft.requirement!.intervalUnit;
+      if (unit && ["DAYS", "WEEKS", "MONTHS", "YEARS"].includes(unit))
+        nextDueAt = addCalendarInterval(
+          now,
+          draft.requirement!.intervalValue,
+          unit as "DAYS" | "WEEKS" | "MONTHS" | "YEARS",
+        );
+      else if (unit === "OPERATING_HOURS")
+        nextOperatingHours = nextOperatingThreshold(
+          Number(draft.requirement!.equipment.currentOperatingHours ?? 0),
+          draft.requirement!.intervalValue,
+        );
+      else if (unit === "USAGE_COUNT")
+        nextUsageCount =
+          draft.requirement!.equipment.usageCount +
+          draft.requirement!.intervalValue;
+    }
+    const protocolId = randomUUID();
+    const closed = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.inspection.updateMany({
+        where: { id: draftId, state: "DRAFT" },
+        data: {
+          state: "CLOSED",
+          result,
+          completedAt: now,
+          confirmedAt: now,
+          limitationReason: limitationReason || null,
+          lockVersion: { increment: 1 },
+        },
+      });
+      if (!claimed.count)
+        return tx.protocol.findUnique({ where: { inspectionId: draftId } });
+      const key = `TS-MST-${now.getFullYear()}`;
+      const counter = await tx.protocolCounter.upsert({
+        where: { key },
+        create: { key, currentValue: 1 },
+        update: { currentValue: { increment: 1 } },
+      });
+      const number = `${key}-${String(counter.currentValue).padStart(6, "0")}`;
+      const equipment = draft.requirement!.equipment;
+      const snapshot = {
+        equipment: {
+          id: equipment.id,
+          uid: equipment.uid,
+          name: equipment.name,
+          manufacturer: equipment.manufacturer,
+          model: equipment.model,
+          serialNumber: equipment.serialNumber,
+          registrationNumber: equipment.registrationNumber,
+          legacyId: equipment.legacyId,
+          vehicle: equipment.vehicle?.name ?? null,
+          location: equipment.location?.name ?? null,
+        },
+        requirement: {
+          id: draft.requirement!.id,
+          name: draft.requirement!.name,
+          type: draft.requirement!.type,
+          intervalValue: draft.requirement!.intervalValue,
+          intervalUnit: draft.requirement!.intervalUnit,
+          source: draft.requirement!.source,
+          article: draft.requirement!.ruleVersion?.article,
+          ruleVersion: draft.requirement!.ruleVersion?.version,
+          sourceDocument:
+            draft.requirement!.ruleVersion?.rule.sourceDocument?.title ??
+            draft.requirement!.sourceRule?.sourceDocument?.title,
+        },
+        checklist: {
+          id: draft.checklistVersion.id,
+          name: draft.checklistVersion.template.name,
+          version: draft.checklistVersion.version,
+          sections: draft.checklistVersion.sections.map((s) => ({
+            title: s.title,
+            items: s.items.map((item) => {
+              const answer = answers.find((a) => a.id === item.id)!;
+              const response = draft.responses.find(
+                (r) => r.checklistItemId === item.id,
+              );
+              return {
+                id: item.id,
+                label: item.label,
+                responseType: item.responseType,
+                unit: item.unit,
+                critical: item.critical,
+                value: answer.notApplicable ? "NERELEVANTNÍ" : answer.value,
+                note: answer.reason || null,
+                photos: responseAttachments
+                  .filter((a) => a.ownerId === response?.id)
+                  .map((a) => ({
+                    fileName: a.fileName,
+                    mimeType: a.mimeType,
+                    sizeBytes: String(a.sizeBytes),
+                    storageKey: a.storageKey,
+                    checksum: a.checksumSha256,
+                  })),
+              };
+            }),
+          })),
+        },
+        inspection: {
+          id: draft.id,
+          inspectorId: user.id,
+          inspector: user.displayName,
+          startedAt: draft.startedAt.toISOString(),
+          completedAt: now.toISOString(),
+          result,
+          limitationReason: limitationReason || null,
+          note: String(formData.get("note") ?? "") || null,
+          nextDueAt: nextDueAt?.toISOString() ?? null,
+        },
+      };
+      await tx.inspection.update({
+        where: { id: draft.id },
+        data: { snapshot: snapshot as Prisma.InputJsonValue },
+      });
+      const protocol = await tx.protocol.create({
+        data: {
+          id: protocolId,
+          number,
+          inspectionId: draft.id,
+          equipmentId: equipment.id,
+          snapshot: snapshot as Prisma.InputJsonValue,
+          rules: draft.requirement!.ruleVersionId
+            ? {
+                create: {
+                  ruleVersionId: draft.requirement!.ruleVersionId,
+                  snapshot: {
+                    name: draft.requirement!.name,
+                    source: draft.requirement!.source,
+                    intervalValue: draft.requirement!.intervalValue,
+                    intervalUnit: draft.requirement!.intervalUnit,
+                  },
+                },
+              }
+            : undefined,
+        },
+      });
+      const blocked = result === "FAILED";
+      await tx.equipmentRequirementHistory.create({
+        data: {
+          requirementId: draft.requirement!.id,
+          lastCompletedAt: now,
+          nextDueAt,
+          intervalValue: draft.requirement!.intervalValue,
+          intervalUnit: draft.requirement!.intervalUnit,
+          status: blocked ? "OVERDUE_BLOCKED" : "COMPLIANT",
+          source: draft.requirement!.source,
+          note: `Uzavřen protokol ${number}`,
+          recordedById: user.id,
+        },
+      });
+      await tx.equipmentRequirement.update({
+        where: { id: draft.requirement!.id },
+        data: {
+          lastCompletedAt: now,
+          nextDueAt,
+          nextOperatingHours,
+          nextUsageCount,
+          status: blocked ? "OVERDUE_BLOCKED" : "COMPLIANT",
+        },
+      });
+      const failed = answers.filter(isFailedAnswer);
+      for (const answer of failed.filter(
+        (a) => a.failCreatesDefect || a.critical,
+      ))
+        await tx.defect.create({
+          data: {
+            equipmentId: equipment.id,
+            inspectionId: draft.id,
+            checklistItemId: answer.id,
+            reportedById: user.id,
+            description:
+              answer.reason || `Nevyhovující kontrolní bod: ${answer.label}`,
+            severity: answer.critical ? "CRITICAL" : "SIGNIFICANT",
+          },
+        });
+      if (blocked) {
+        if (!failed.some((a) => a.failCreatesDefect || a.critical))
+          await tx.defect.create({
+            data: {
+              equipmentId: equipment.id,
+              inspectionId: draft.id,
+              reportedById: user.id,
+              description: `Nevyhovující výsledek: ${draft.requirement!.name}`,
+              severity: "CRITICAL",
+            },
+          });
+        await tx.equipmentItem.update({
+          where: { id: equipment.id },
+          data: {
+            status: "OUT_OF_SERVICE",
+            complianceStatus: "OVERDUE_BLOCKED",
+          },
+        });
+      }
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          action: "INSPECTION_CLOSED",
+          entityType: "Inspection",
+          entityId: draft.id,
+          newValue: {
+            equipmentId: equipment.id,
+            requirementId: draft.requirement!.id,
+            protocolId: protocol.id,
+            result,
+            timestamp: now.toISOString(),
+          },
+        },
+      });
+      if (draft.correctionOfId) {
+        await tx.inspection.update({
+          where: { id: draft.correctionOfId },
+          data: { state: "CORRECTED" },
+        });
+        await tx.auditLog.create({
+          data: {
+            userId: user.id,
+            action: "INSPECTION_CORRECTED",
+            entityType: "Inspection",
+            entityId: draft.id,
+            newValue: {
+              correctionOfId: draft.correctionOfId,
+              protocolId: protocol.id,
+            },
+          },
+        });
+      }
+      return protocol;
+    });
+    if (!closed) throw new Error("Kontrola již byla uzavřena.");
+    revalidatePath("/kontroly");
+    revalidatePath("/protokoly");
+    revalidatePath(`/prostredky/${draft.equipmentId}`);
+    redirect(`/kontroly/${draft.id}`);
+  } catch (error) {
+    if (error && typeof error === "object" && "digest" in error) throw error;
+    console.error("Uzavření kontroly selhalo", {
+      userId: user.id,
+      draftId,
+      error,
+    });
+    const draft = await prisma.inspection.findUnique({
+      where: { id: draftId },
+      select: { requirementId: true },
+    });
+    redirect(
+      `/kontroly/provest/${draft?.requirementId ?? ""}?draft=${draftId}&chyba=${encodeURIComponent(error instanceof Error ? error.message : "Kontrolu se nepodařilo uzavřít.")}`,
+    );
+  }
+}
+
+export async function cancelInspection(formData: FormData) {
+  const user = await requireInspectionOperator();
+  const inspectionId = String(formData.get("inspectionId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!reason) return;
+  const inspection = await prisma.inspection.findUnique({
+    where: { id: inspectionId },
+  });
+  if (!inspection) return;
+  const roles = new Set(user.roles.map((r) => r.role.code));
+  if (
+    inspection.inspectorId !== user.id &&
+    !roles.has("ADMIN") &&
+    !roles.has("TS_ADMIN")
+  )
+    return;
+  await prisma.$transaction([
+    prisma.inspection.update({
+      where: { id: inspectionId },
+      data: {
+        state: "CANCELLED",
+        correctionReason: reason,
+        cancelledAt: new Date(),
+        cancelledById: user.id,
+      },
+    }),
+    prisma.protocol.updateMany({
+      where: { inspectionId },
+      data: { cancelledAt: new Date(), cancellationReason: reason },
+    }),
+    prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "INSPECTION_CANCELLED",
+        entityType: "Inspection",
+        entityId: inspectionId,
+        reason,
+      },
+    }),
+  ]);
+  revalidatePath("/kontroly");
+  revalidatePath(`/kontroly/${inspectionId}`);
+}
+
+export async function saveShiftInspection(formData: FormData) {
+  const user = await requireInspectionOperator();
+  const vehicleId = String(formData.get("vehicleId") ?? "");
+  const equipment = await prisma.equipmentItem.findMany({
+    where: { vehicleId, archivedAt: null },
+    select: { id: true },
+  });
+  const labels: Record<string, string> = {
+    OK: "V pořádku",
+    DEFECT: "Závada",
+    MISSING: "Chybí",
+    USED: "Použito předchozí směnou",
+  };
+  const now = new Date();
+  const entries = equipment.flatMap((item) => {
+    const state = String(formData.get(`state-${item.id}`) ?? "");
+    if (!labels[state]) return [];
+    return prisma.equipmentLogEntry.create({
+      data: {
+        equipmentId: item.id,
+        eventType:
+          state === "DEFECT" || state === "MISSING" ? "DEFECT" : "INSPECTION",
+        occurredAt: now,
+        description: `Směnová kontrola: ${labels[state]}`,
+        createdById: user.id,
+        source: "Směnová kontrola",
+      },
+    });
+  });
+  await prisma.$transaction([
+    ...entries,
+    prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "SHIFT_INSPECTION_SAVED",
+        entityType: "Vehicle",
+        entityId: vehicleId,
+        newValue: { recorded: entries.length, timestamp: now.toISOString() },
+      },
+    }),
+  ]);
+  revalidatePath("/kontroly");
+  redirect("/kontroly?tab=smenove&hotovo=1");
+}
+
+export async function startCorrection(formData: FormData) {
+  const user = await requireInspectionOperator();
+  const originalId = String(formData.get("inspectionId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!reason)
+    redirect(
+      `/kontroly/${originalId}?chyba=${encodeURIComponent("Důvod opravné kontroly je povinný.")}`,
+    );
+  const original = await prisma.inspection.findUnique({
+    where: { id: originalId },
+    include: { requirement: { include: detailInclude } },
+  });
+  if (
+    !original?.requirementId ||
+    !original.requirement ||
+    !["CLOSED", "CORRECTED"].includes(original.state)
+  )
+    redirect(`/kontroly/${originalId}`);
+  assertAuthorized(user, original.requirement);
+  const existing = await prisma.inspection.findFirst({
+    where: {
+      inspectorId: user.id,
+      equipmentId: original.equipmentId,
+      requirementId: original.requirementId,
+      state: "DRAFT",
+    },
+  });
+  if (existing)
+    redirect(
+      `/kontroly/provest/${original.requirementId}?draft=${existing.id}`,
+    );
+  const draft = await prisma.$transaction(async (tx) => {
+    const created = await tx.inspection.create({
+      data: {
+        equipmentId: original.equipmentId,
+        requirementId: original.requirementId!,
+        inspectorId: user.id,
+        checklistVersionId: original.checklistVersionId,
+        inspectionType: original.inspectionType,
+        level: original.level,
+        correctionOfId: original.id,
+        correctionReason: reason,
+        identityVerifiedAt: new Date(),
+      },
+    });
     await tx.auditLog.create({
       data: {
         userId: user.id,
-        action: "INSPECTION_CLOSED",
+        action: "INSPECTION_STARTED",
         entityType: "Inspection",
-        entityId: inspectionId,
-        newValue: { protocolId, requirementId, result },
-        reason: "Uzavření odborné kontroly",
+        entityId: created.id,
+        reason,
+        newValue: { correctionOfId: original.id },
       },
     });
+    return created;
   });
-  revalidatePath(`/prostredky/${requirement.equipmentId}`);
-  revalidatePath("/kontroly");
-  revalidatePath("/protokoly");
-  redirect(`/prostredky/${requirement.equipmentId}?protokol=${protocolId}`);
+  redirect(`/kontroly/provest/${original.requirementId}?draft=${draft.id}`);
 }

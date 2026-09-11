@@ -101,10 +101,20 @@ export default async function EquipmentDetail({
             </p>
           </div>
           <div className="page-actions">
-            <button className="button">
-              <ClipboardCheck size={18} />
-              Provést kontrolu
-            </button>
+            {item.requirements.some((r) => r.type === "INSPECTION") && (
+              <Link
+                className="button"
+                href={
+                  item.requirements.filter((r) => r.type === "INSPECTION")
+                    .length === 1
+                    ? `/kontroly/provest/${item.requirements.find((r) => r.type === "INSPECTION")!.id}`
+                    : `/kontroly/provest?hledat=${encodeURIComponent(item.uid)}`
+                }
+              >
+                <ClipboardCheck size={18} />
+                Provést kontrolu
+              </Link>
+            )}
             {canEdit && (
               <Link
                 className="button secondary"

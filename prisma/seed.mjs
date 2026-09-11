@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 import { PrismaClient, RuleSourceType } from "@prisma/client";
 import {
   CEPRO_CHECKLISTS,
+  CEPRO_DETAILED_CHECKLISTS,
   CEPRO_RULES,
   CEPRO_SOURCE,
 } from "./cepro-methodology.mjs";
@@ -275,50 +276,81 @@ async function seedCeproMethodology() {
   });
 
   const checklistVersions = new Map();
-  for (const [key, name, items] of CEPRO_CHECKLISTS) {
+  const checklistEntries = [...CEPRO_CHECKLISTS];
+  for (const [key, name] of [
+    ["thermal-daily", "Termokamera – denní"],
+    ["thermal-weekly", "Termokamera – týdenní"],
+    ["thermal-monthly", "Termokamera – měsíční"],
+    ["general-ts", "Obecný checklist dle metodiky – doplnit podle výrobce"],
+  ])
+    if (!checklistEntries.some(([existing]) => existing === key))
+      checklistEntries.push([key, name, []]);
+  for (const [key, name, items] of checklistEntries) {
     const template = await adoptSeededRecord(
       db.checklistTemplate,
       `cepro:${key}`,
       { name },
       { name },
     );
+    const detailed = CEPRO_DETAILED_CHECKLISTS[key];
+    const versionNumber = detailed ? 2 : 1;
     const version = await db.checklistTemplateVersion.upsert({
-      where: { templateId_version: { templateId: template.id, version: 1 } },
+      where: {
+        templateId_version: { templateId: template.id, version: versionNumber },
+      },
       update: {},
       create: {
         templateId: template.id,
-        version: 1,
+        version: versionNumber,
         validFrom: CEPRO_SOURCE.effectiveFrom,
+        allowPassedWithLimitation: key === "general-ts",
+        nonCriticalFailureResult:
+          key === "general-ts" ? "PASSED_WITH_LIMITATION" : "FAILED",
         sections: {
-          create: {
-            title: "Pracovní parametry metodiky",
-            sortOrder: 1,
+          create: (
+            detailed ?? [
+              {
+                title: "Pracovní parametry metodiky",
+                items: items.map((label) => ({
+                  label,
+                  responseType:
+                    label.includes("MPa") || label.includes("minut")
+                      ? "MEASUREMENT"
+                      : "PASS_FAIL",
+                  required: true,
+                  failRequiresNote: true,
+                  failCreatesDefect: true,
+                })),
+              },
+            ]
+          ).map((section, sectionIndex) => ({
+            title: section.title,
+            sortOrder: sectionIndex + 1,
             items: {
-              create: items.map((label, sortOrder) => ({
-                label,
-                responseType:
-                  label.includes("MPa") || label.includes("minut")
-                    ? "MEASUREMENT"
-                    : "PASS_FAIL",
-                required: true,
-                allowNotApplicable: false,
-                naRequiresReason: false,
-                failRequiresNote: true,
-                failCreatesDefect: true,
-                optionsJson: label.includes("Zkouška systému")
-                  ? { stopWhenPreviousVisualCheckFailed: true }
-                  : undefined,
+              create: section.items.map((item, sortOrder) => ({
+                label: item.label,
+                responseType: item.responseType,
+                required: item.required ?? true,
+                allowNotApplicable: item.allowNotApplicable ?? false,
+                naRequiresReason: item.naRequiresReason ?? false,
+                failRequiresNote: item.failRequiresNote ?? false,
+                failRequiresPhoto: item.failRequiresPhoto ?? false,
+                failCreatesDefect: item.failCreatesDefect ?? false,
+                critical: item.critical ?? false,
+                unit: item.unit,
+                optionsJson: item.optionsJson,
+                conditionJson: section.conditionJson,
                 sortOrder,
               })),
             },
-          },
+          })),
         },
       },
     });
     checklistVersions.set(key, version.id);
   }
 
-  const checklistFor = (targetKey, name) => {
+  const checklistFor = (targetKey, name, performedBy, type) => {
     if (targetKey === "LADDER") return "ladder";
     if (["LIFTING_BAG", "PIPE_PLUG", "SEALING_BAG"].includes(targetKey))
       return "bag";
@@ -328,19 +360,32 @@ async function seedCeproMethodology() {
         : name.includes("nejvyšší")
           ? "pump-pressure"
           : "pump-weekly";
-    return {
-      SUCTION_HOSE: "suction-hose",
-      HEIGHT_WORK: "height",
-      BOAT_ENGINE: "boat-engine",
-      FIREFIGHTER_PPE: "ppe",
-      HELMET: "helmet",
-      AED: "aed",
-      THERMAL_CAMERA: "thermal-camera",
-      COMPRESSOR: "compressor",
-      COMPRESSOR_ASTRA: "compressor",
-      COMPRESSOR_TRIDENT: "compressor",
-      WATER_RESCUE: "water-rescue",
-    }[targetKey];
+    if (targetKey === "THERMAL_CAMERA")
+      return name.includes("Denní")
+        ? "thermal-daily"
+        : name.includes("Týdenní")
+          ? "thermal-weekly"
+          : "thermal-monthly";
+    return (
+      {
+        SUCTION_HOSE: "suction-hose",
+        HEIGHT_WORK: "height",
+        BOAT_ENGINE: "boat-engine",
+        FIREFIGHTER_PPE: "ppe",
+        HELMET: "helmet",
+        AED: "aed",
+        COMPRESSOR: "compressor",
+        COMPRESSOR_ASTRA: "compressor",
+        COMPRESSOR_TRIDENT: "compressor",
+        WATER_RESCUE: "water-rescue",
+      }[targetKey] ??
+      (type !== "INSPECTION" ||
+      /extern|výrobce|servisní organizace|revizní technik/i.test(
+        performedBy ?? "",
+      )
+        ? undefined
+        : "general-ts")
+    );
   };
   for (const entry of CEPRO_RULES) {
     const seedKey =
@@ -376,7 +421,12 @@ async function seedCeproMethodology() {
         active: true,
       },
     });
-    const checklistKey = checklistFor(entry.targetKey, entry.name);
+    const checklistKey = checklistFor(
+      entry.targetKey,
+      entry.name,
+      entry.performedBy,
+      entry.type,
+    );
     await db.ruleVersion.upsert({
       where: { ruleId_version: { ruleId: found.id, version: 1 } },
       update: {

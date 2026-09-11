@@ -535,3 +535,212 @@ export const CEPRO_CHECKLISTS = [
     ],
   ],
 ];
+
+const pf = (label, extra = {}) => ({
+  label,
+  responseType: "PASS_FAIL",
+  required: true,
+  failRequiresNote: true,
+  failCreatesDefect: true,
+  ...extra,
+});
+const measure = (label, unit, options = {}) => ({
+  label,
+  responseType: "MEASUREMENT",
+  unit,
+  required: true,
+  optionsJson: options,
+  failRequiresNote: false,
+});
+const section = (title, items, conditionJson) => ({
+  title,
+  items,
+  conditionJson,
+});
+
+export const CEPRO_DETAILED_CHECKLISTS = {
+  ladder: [
+    section(
+      "Prohlídka",
+      [
+        "Uchycení všech příčlí",
+        "Pevnost uchycení všech šroubů a nýtů",
+        "Neporušenost svarů",
+        "Trhliny",
+        "Rozštípnutí",
+        "Lomy",
+        "Deformace",
+        "Prohloubeniny příčlí a štěřin",
+        "Stav protiskluzových patek",
+        "Zřetelnost a čitelnost označení",
+      ].map((x) =>
+        pf(x, { critical: ["Trhliny", "Lomy", "Deformace"].includes(x) }),
+      ),
+    ),
+    section(
+      "Funkčnost",
+      [
+        "Spojení nastavovacích dílů",
+        "Díly do sebe snadno zapadají",
+        "Funkčnost západek",
+        "Díly se při zkoušce nesmí rozpojit",
+      ].map((x) => pf(x, { critical: x.includes("nesmí rozpojit") })),
+    ),
+    section("Identifikace", [
+      pf("Ověřeno výrobní / evidenční číslo", { critical: true }),
+    ]),
+  ],
+  bag: [
+    section(
+      "Prohlídka",
+      [
+        "Redukční ventil",
+        "Závit ventilu",
+        "O-kroužek",
+        "Hadice",
+        "Spojky",
+        "Ovládací zařízení",
+        "Ovládací prvky",
+        "Povrch vaků",
+        "Označená poškození",
+      ].map((x) => pf(x, { critical: true })),
+    ),
+    section(
+      "Funkční zkouška",
+      [
+        "Těsnost spojení",
+        "Funkce tlakoměrů redukčního ventilu",
+        "Funkce tlakoměrů ovládacího zařízení",
+        "Systém sestaven správně",
+        "Tlak 1/10 přípustného tlaku",
+        "Kontrola nejméně 1 min",
+        "Tlak 1/2 přípustného tlaku",
+        "Kontrola těsnosti",
+        "Pojistný ventil",
+        "Činnost pojistného ventilu podle výrobce",
+      ].map((x) => pf(x, { critical: true })),
+      { stopWhenPreviousSectionFailed: true },
+    ),
+  ],
+  "suction-hose": [
+    section(
+      "Prohlídka",
+      ["Vizuální stav", "Mechanické poškození", "Sací šroubení"].map((x) =>
+        pf(x),
+      ),
+    ),
+    section("Měření podtlaku", [
+      measure("Dosažený podtlak", "MPa", { targetMin: 0.07 }),
+      measure("Čas dosažení", "s", { max: 30 }),
+      measure("Pokles podtlaku za 1 min", "MPa", { max: 0.01 }),
+    ]),
+    section(
+      "Přetlaková zkouška",
+      [
+        measure("Zkušební přetlak", "MPa", { min: 0.01, max: 0.2 }),
+        measure("Doba zkoušky", "min", { min: 1 }),
+        pf("Těsnost"),
+      ],
+      { showWhenAnyFailed: true },
+    ),
+  ],
+  "pump-weekly": [
+    section("Týdenní – základní funkčnost", [
+      pf("Základní funkčnost", { critical: true }),
+      pf("Mazání a provozní náplně"),
+      pf("Ovládací prvky"),
+    ]),
+  ],
+  "pump-suction": [
+    section("3 měsíce – sání a těsnost", [
+      measure("Dosažený podtlak", "MPa", { targetMin: 0.08 }),
+      measure("Dosažen do", "s", { max: 30 }),
+      measure("Pokles během 60 s", "MPa", { max: 0.01 }),
+    ]),
+  ],
+  "pump-pressure": [
+    section("12 měsíců – nejvyšší tlak", [
+      measure("Naměřený nejvyšší tlak", "MPa"),
+      pf("Tlak odpovídá metodice, typu nebo přísnějšímu požadavku výrobce", {
+        critical: true,
+      }),
+    ]),
+  ],
+  aed: [
+    section(
+      "Týdenní kontrola AED",
+      [
+        "Znečištění",
+        "Mechanické poškození",
+        "Displej",
+        "Symbol OK",
+        "Stav baterie",
+        "Stav elektrod",
+        "Expirace elektrod",
+        "Pomůcky",
+      ].map((x) => pf(x)),
+      {},
+    ),
+    section("Servisní stav", [
+      {
+        label: "Servisní symbol je zobrazen",
+        responseType: "BOOLEAN",
+        required: true,
+        critical: true,
+        failRequiresNote: true,
+        failCreatesDefect: true,
+        optionsJson: { failWhen: true },
+      },
+    ]),
+  ],
+  "thermal-daily": [
+    section(
+      "Denní kontrola",
+      ["Celistvost", "Úplnost", "Viditelné poškození", "Správné uložení"].map(
+        (x) => pf(x),
+      ),
+    ),
+  ],
+  "thermal-weekly": [
+    section(
+      "Týdenní kontrola",
+      [
+        "Celistvost",
+        "Úplnost",
+        "Viditelné poškození",
+        "Správné uložení",
+        "Stav baterie",
+      ].map((x) => pf(x)),
+    ),
+  ],
+  "thermal-monthly": [
+    section(
+      "Měsíční kontrola",
+      [
+        "Celistvost",
+        "Úplnost",
+        "Viditelné poškození",
+        "Správné uložení",
+        "Stav baterie",
+        "Funkční zkouška nastavení zobrazení",
+      ].map((x) => pf(x)),
+    ),
+  ],
+  "general-ts": [
+    section(
+      "Obecná odborná kontrola",
+      [
+        "Identifikace prostředku",
+        "Celistvost",
+        "Úplnost",
+        "Viditelné poškození",
+        "Funkčnost",
+        "Označení",
+      ]
+        .map((x) => pf(x))
+        .concat([
+          { label: "Poznámka", responseType: "TEXTAREA", required: false },
+        ]),
+    ),
+  ],
+};

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 export default async function Page() {
   const protocols = await prisma.protocol.findMany({
-    include: { equipment: true },
+    include: { equipment: true, inspection: true },
     orderBy: { createdAt: "desc" },
     take: 100,
   });
@@ -36,7 +36,12 @@ export default async function Page() {
                   </td>
                   <td>{p.legacyImported ? "Původní evidence" : "TSHZS"}</td>
                   <td>
-                    {p.externalUrl ? (
+                    {p.inspectionId ? (
+                      <span className="row-actions">
+                        <Link href={`/kontroly/${p.inspectionId}`}>Detail</Link>
+                        <a href={`/api/kontroly/${p.inspectionId}/pdf`}>PDF</a>
+                      </span>
+                    ) : p.externalUrl ? (
                       <a href={p.externalUrl} target="_blank" rel="noreferrer">
                         Otevřít původní PDF
                       </a>

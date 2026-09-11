@@ -20,3 +20,13 @@ export async function requireEquipmentEditor() {
     );
   return user;
 }
+
+export async function requireInspectionOperator() {
+  const user = await requireUser();
+  const roles = new Set(user.roles.map(({ role }) => role.code));
+  if (
+    !["ADMIN", "TS_ADMIN", "TECHNICIAN", "USER"].some((role) => roles.has(role))
+  )
+    redirect("/kontroly?chyba=K provedení kontroly nemáte oprávnění.");
+  return user;
+}

@@ -580,14 +580,16 @@ model ChecklistTemplate {
 }
 
 model ChecklistTemplateVersion {
-  id          String             @id @default(cuid())
-  templateId  String
-  version     Int
-  validFrom   DateTime           @default(now())
-  validTo     DateTime?
-  template    ChecklistTemplate  @relation(fields: [templateId], references: [id])
-  sections    ChecklistSection[]
-  inspections Inspection[]
+  id                        String             @id @default(cuid())
+  templateId                String
+  version                   Int
+  validFrom                 DateTime           @default(now())
+  validTo                   DateTime?
+  allowPassedWithLimitation Boolean            @default(false)
+  nonCriticalFailureResult  InspectionResult   @default(FAILED)
+  template                  ChecklistTemplate  @relation(fields: [templateId], references: [id])
+  sections                  ChecklistSection[]
+  inspections               Inspection[]
 
   @@unique([templateId, version])
 }
@@ -602,20 +604,24 @@ model ChecklistSection {
 }
 
 model ChecklistItem {
-  id                 String           @id @default(cuid())
+  id                 String               @id @default(cuid())
   sectionId          String
   label              String
   responseType       String
-  required           Boolean          @default(false)
-  allowNotApplicable Boolean          @default(false)
-  naRequiresReason   Boolean          @default(false)
-  failRequiresNote   Boolean          @default(false)
-  failRequiresPhoto  Boolean          @default(false)
-  failCreatesDefect  Boolean          @default(false)
+  required           Boolean              @default(false)
+  allowNotApplicable Boolean              @default(false)
+  naRequiresReason   Boolean              @default(false)
+  failRequiresNote   Boolean              @default(false)
+  failRequiresPhoto  Boolean              @default(false)
+  failCreatesDefect  Boolean              @default(false)
+  critical           Boolean              @default(false)
+  conditionJson      Json?
   unit               String?
   optionsJson        Json?
   sortOrder          Int
-  section            ChecklistSection @relation(fields: [sectionId], references: [id])
+  section            ChecklistSection     @relation(fields: [sectionId], references: [id])
+  responses          InspectionResponse[]
+  defects            Defect[]
 }
 
 model Inspection {
@@ -633,6 +639,12 @@ model Inspection {
   note               String?
   correctionOfId     String?
   correctionReason   String?
+  identityVerifiedAt DateTime?
+  confirmedAt        DateTime?
+  limitationReason   String?
+  cancelledAt        DateTime?
+  cancelledById      String?
+  lockVersion        Int                      @default(0)
   snapshot           Json?
   equipment          EquipmentItem            @relation(fields: [equipmentId], references: [id])
   requirement        EquipmentRequirement?    @relation(fields: [requirementId], references: [id])
@@ -679,12 +691,13 @@ model EquipmentOperatingLog {
 }
 
 model InspectionResponse {
-  id              String     @id @default(cuid())
+  id              String        @id @default(cuid())
   inspectionId    String
   checklistItemId String
   valueJson       Json
   note            String?
-  inspection      Inspection @relation(fields: [inspectionId], references: [id])
+  inspection      Inspection    @relation(fields: [inspectionId], references: [id])
+  checklistItem   ChecklistItem @relation(fields: [checklistItemId], references: [id])
 
   @@unique([inspectionId, checklistItemId])
 }
@@ -714,6 +727,12 @@ model Protocol {
   @@index([correctionOfId])
 }
 
+model ProtocolCounter {
+  key          String   @id
+  currentValue Int      @default(0)
+  updatedAt    DateTime @updatedAt
+}
+
 model ProtocolRuleSnapshot {
   id            String      @id @default(cuid())
   protocolId    String
@@ -726,18 +745,20 @@ model ProtocolRuleSnapshot {
 }
 
 model Defect {
-  id           String         @id @default(cuid())
-  equipmentId  String
-  inspectionId String?
-  reportedById String
-  description  String
-  severity     DefectSeverity
-  foundAt      DateTime       @default(now())
-  locationText String?
-  closedAt     DateTime?
-  equipment    EquipmentItem  @relation(fields: [equipmentId], references: [id])
-  inspection   Inspection?    @relation(fields: [inspectionId], references: [id])
-  serviceCase  ServiceCase?
+  id              String         @id @default(cuid())
+  equipmentId     String
+  inspectionId    String?
+  checklistItemId String?
+  reportedById    String
+  description     String
+  severity        DefectSeverity
+  foundAt         DateTime       @default(now())
+  locationText    String?
+  closedAt        DateTime?
+  equipment       EquipmentItem  @relation(fields: [equipmentId], references: [id])
+  inspection      Inspection?    @relation(fields: [inspectionId], references: [id])
+  checklistItem   ChecklistItem? @relation(fields: [checklistItemId], references: [id])
+  serviceCase     ServiceCase?
 }
 
 model ServiceCase {

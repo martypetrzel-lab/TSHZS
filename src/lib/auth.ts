@@ -42,6 +42,12 @@ export async function getCurrentUser() {
       displayName: true,
       organizationId: true,
       roles: { select: { role: { select: { code: true } } } },
+      qualifications: {
+        select: {
+          validUntil: true,
+          qualification: { select: { id: true, code: true, name: true } },
+        },
+      },
     },
   });
 }

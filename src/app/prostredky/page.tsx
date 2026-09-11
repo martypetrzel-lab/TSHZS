@@ -89,7 +89,6 @@ export default async function Page({
           requirements: {
             where: { archivedAt: null },
             orderBy: { nextDueAt: "asc" },
-            take: 1,
           },
         },
         orderBy,
@@ -300,6 +299,15 @@ export default async function Page({
                             Upravit
                           </Link>
                         )}
+                        {i.requirements.some(
+                          (r) => r.type === "INSPECTION",
+                        ) && (
+                          <Link
+                            href={`/kontroly/provest/${i.requirements.find((r) => r.type === "INSPECTION")!.id}`}
+                          >
+                            Provést kontrolu
+                          </Link>
+                        )}
                       </div>
                     </td>
                     <td>{i.uid}</td>
@@ -323,9 +331,10 @@ export default async function Page({
                       </span>
                     </td>
                     <td>
-                      {i.requirements[0]?.nextDueAt?.toLocaleDateString(
-                        "cs-CZ",
-                      ) ?? "Nedefinováno"}
+                      {i.requirements
+                        .find((r) => r.nextDueAt)
+                        ?.nextDueAt?.toLocaleDateString("cs-CZ") ??
+                        "Nedefinováno"}
                     </td>
                   </tr>
                 ))}
