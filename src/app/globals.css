@@ -1063,7 +1063,7 @@ a {
   gap: 10px;
   align-items: center;
 }
-.row-actions a {
+.row-actions a:not(.button) {
   display: inline-flex;
   gap: 5px;
   align-items: center;
@@ -1465,6 +1465,21 @@ a {
   padding-bottom: 6rem;
   display: grid;
   gap: 1rem;
+}
+.operational-document-form {
+  display: grid;
+  gap: 1.25rem;
+}
+.operational-form-section {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.operational-form-section h2 {
+  margin: 0;
 }
 .inspection-form-header {
   display: flex;

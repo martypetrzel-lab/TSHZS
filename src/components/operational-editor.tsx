@@ -208,150 +208,152 @@ export function OperationalEditor({
   }
   return (
     <OperationalActionForm action={saveOperationalDraft}>
-      {docId && <input type="hidden" name="id" value={docId} />}
-      <input type="hidden" name="type" value={type} />
-      <p>{definition.description}</p>
-      <p>
-        Ukládá a tiskne se jako samostatný dokument:{" "}
-        <strong>{protocolTypes[type]}</strong>.
-      </p>
-      <label className="field">
-        {type === "REPAIR_PROPOSAL" ? "Datum návrhu" : "Datum protokolu"}
-        <input type="date" name="protocolDate" defaultValue={date} required />
-      </label>
-      <section>
-        <h2>
-          {type === "HANDOVER"
-            ? "Předávané prostředky"
-            : "Technický prostředek"}
-        </h2>
+      <div className="operational-document-form">
+        {docId && <input type="hidden" name="id" value={docId} />}
+        <input type="hidden" name="type" value={type} />
+        <p>{definition.description}</p>
         <p>
-          {type === "HANDOVER"
-            ? "Vyberte jeden nebo více prostředků k předání."
-            : "Vyberte jeden prostředek, kterého se tento dokument týká."}
+          Ukládá a tiskne se jako samostatný dokument:{" "}
+          <strong>{protocolTypes[type]}</strong>.
         </p>
         <label className="field">
-          Vyhledat název, UID, číslo nebo vozidlo
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
+          {type === "REPAIR_PROPOSAL" ? "Datum návrhu" : "Datum protokolu"}
+          <input type="date" name="protocolDate" defaultValue={date} required />
         </label>
-        <div style={{ maxHeight: 260, overflow: "auto" }}>
-          {!visible.length && <p>Žádný prostředek neodpovídá hledání.</p>}
-          {visible.map((e) => (
-            <label className="confirm-check" key={e.id}>
-              <input
-                type={type === "HANDOVER" ? "checkbox" : "radio"}
-                name="equipmentId"
-                value={e.id}
-                checked={selected.includes(e.id)}
-                onChange={(event) =>
-                  setSelected(
-                    type === "HANDOVER"
-                      ? event.target.checked
-                        ? [...selected, e.id]
-                        : selected.filter((id) => id !== e.id)
-                      : [e.id],
-                  )
-                }
-              />
-              {e.name} · {e.uid} · {e.vehicle || e.location}
-              {e.activeHandover && " · Již předáno"}
-            </label>
-          ))}
-        </div>
-        {/* Search must not remove selected equipment from the submitted document. */}
-        {selected
-          .filter((id) => !visible.some((e) => e.id === id))
-          .map((id) => (
-            <input key={id} type="hidden" name="equipmentId" value={id} />
-          ))}
-        {equipment
-          .filter((e) => selected.includes(e.id))
-          .map((e) => (
-            <section key={e.id} className="card">
-              <h3>
-                {e.name} · {e.uid}
-              </h3>
-              <p>
-                Výrobce: {e.manufacturer ?? "—"} · Model: {e.model ?? "—"} ·
-                Výrobní číslo: {e.serialNumber ?? "—"} · Evidenční číslo:{" "}
-                {e.registrationNumber ?? "—"}
-              </p>
-              {type === "HANDOVER" && e.activeHandover && (
-                <p className="error">
-                  Prostředek je v aktivním předání. Další předání nelze
-                  potvrdit, dokud nebude vrácen.
-                </p>
-              )}
-              {type === "HANDOVER" ? (
-                <label className="field">
-                  Počet kusů
-                  <input
-                    type="number"
-                    name={`quantity-${e.id}`}
-                    min="1"
-                    max={e.quantity}
-                    defaultValue={itemDetails[e.id]?.quantity || "1"}
-                    required
-                  />
-                </label>
-              ) : (
+        <section className="operational-form-section">
+          <h2>
+            {type === "HANDOVER"
+              ? "Předávané prostředky"
+              : "Technický prostředek"}
+          </h2>
+          <p>
+            {type === "HANDOVER"
+              ? "Vyberte jeden nebo více prostředků k předání."
+              : "Vyberte jeden prostředek, kterého se tento dokument týká."}
+          </p>
+          <label className="field">
+            Vyhledat název, UID, číslo nebo vozidlo
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+          <div style={{ maxHeight: 260, overflow: "auto" }}>
+            {!visible.length && <p>Žádný prostředek neodpovídá hledání.</p>}
+            {visible.map((e) => (
+              <label className="confirm-check" key={e.id}>
                 <input
-                  type="hidden"
-                  name={`quantity-${e.id}`}
-                  value={itemDetails[e.id]?.quantity || "1"}
+                  type={type === "HANDOVER" ? "checkbox" : "radio"}
+                  name="equipmentId"
+                  value={e.id}
+                  checked={selected.includes(e.id)}
+                  onChange={(event) =>
+                    setSelected(
+                      type === "HANDOVER"
+                        ? event.target.checked
+                          ? [...selected, e.id]
+                          : selected.filter((id) => id !== e.id)
+                        : [e.id],
+                    )
+                  }
                 />
-              )}
-              {definition.itemFields.map((key) => (
-                <label className="field" key={key}>
-                  {operationalLabels[key]}
-                  <input
-                    name={`${key}-${e.id}`}
-                    defaultValue={itemDetails[e.id]?.[key] ?? ""}
-                  />
-                </label>
-              ))}
-              {["condition", "accessories", "description", "note"]
-                .filter((key) => !definition.itemFields.includes(key))
-                .map((key) => (
+                {e.name} · {e.uid} · {e.vehicle || e.location}
+                {e.activeHandover && " · Již předáno"}
+              </label>
+            ))}
+          </div>
+          {/* Search must not remove selected equipment from the submitted document. */}
+          {selected
+            .filter((id) => !visible.some((e) => e.id === id))
+            .map((id) => (
+              <input key={id} type="hidden" name="equipmentId" value={id} />
+            ))}
+          {equipment
+            .filter((e) => selected.includes(e.id))
+            .map((e) => (
+              <section key={e.id} className="card">
+                <h3>
+                  {e.name} · {e.uid}
+                </h3>
+                <p>
+                  Výrobce: {e.manufacturer ?? "—"} · Model: {e.model ?? "—"} ·
+                  Výrobní číslo: {e.serialNumber ?? "—"} · Evidenční číslo:{" "}
+                  {e.registrationNumber ?? "—"}
+                </p>
+                {type === "HANDOVER" && e.activeHandover && (
+                  <p className="error">
+                    Prostředek je v aktivním předání. Další předání nelze
+                    potvrdit, dokud nebude vrácen.
+                  </p>
+                )}
+                {type === "HANDOVER" ? (
+                  <label className="field">
+                    Počet kusů
+                    <input
+                      type="number"
+                      name={`quantity-${e.id}`}
+                      min="1"
+                      max={e.quantity}
+                      defaultValue={itemDetails[e.id]?.quantity || "1"}
+                      required
+                    />
+                  </label>
+                ) : (
                   <input
                     type="hidden"
-                    key={key}
-                    name={`${key}-${e.id}`}
-                    value={docId ? (itemDetails[e.id]?.[key] ?? "") : ""}
+                    name={`quantity-${e.id}`}
+                    value={itemDetails[e.id]?.quantity || "1"}
                   />
+                )}
+                {definition.itemFields.map((key) => (
+                  <label className="field" key={key}>
+                    {operationalLabels[key]}
+                    <input
+                      name={`${key}-${e.id}`}
+                      defaultValue={itemDetails[e.id]?.[key] ?? ""}
+                    />
+                  </label>
                 ))}
-            </section>
-          ))}
-      </section>
-      {definition.sections.map((section) => (
-        <section key={section.title}>
-          <h2>{section.title}</h2>
-          {section.fields.map(field)}
+                {["condition", "accessories", "description", "note"]
+                  .filter((key) => !definition.itemFields.includes(key))
+                  .map((key) => (
+                    <input
+                      type="hidden"
+                      key={key}
+                      name={`${key}-${e.id}`}
+                      value={docId ? (itemDetails[e.id]?.[key] ?? "") : ""}
+                    />
+                  ))}
+              </section>
+            ))}
         </section>
-      ))}
-      {Object.keys(operationalLabels)
-        .concat(["recipientUserId", "eventPlannedAt", "eventOccurredAt"])
-        .filter((key) => !fields.includes(key))
-        .map((key) => (
-          <input
-            type="hidden"
-            key={key}
-            name={key}
-            value={
-              key.startsWith("related") || key === "repairCaseId" || docId
-                ? (initial[key] ?? "")
-                : ""
-            }
-          />
+        {definition.sections.map((section) => (
+          <section className="operational-form-section" key={section.title}>
+            <h2>{section.title}</h2>
+            {section.fields.map(field)}
+          </section>
         ))}
-      <div className="inspection-sticky">
-        <button className="button" disabled={!selected.length}>
-          Uložit: {protocolTypes[type]}
-        </button>
+        {Object.keys(operationalLabels)
+          .concat(["recipientUserId", "eventPlannedAt", "eventOccurredAt"])
+          .filter((key) => !fields.includes(key))
+          .map((key) => (
+            <input
+              type="hidden"
+              key={key}
+              name={key}
+              value={
+                key.startsWith("related") || key === "repairCaseId" || docId
+                  ? (initial[key] ?? "")
+                  : ""
+              }
+            />
+          ))}
+        <div className="inspection-sticky">
+          <button className="button" disabled={!selected.length}>
+            Uložit: {protocolTypes[type]}
+          </button>
+        </div>
       </div>
     </OperationalActionForm>
   );
