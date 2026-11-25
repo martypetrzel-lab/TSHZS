@@ -184,11 +184,18 @@ export async function renderOperationalPdf(input: {
           .join("; ") || "Bez další poznámky",
     });
   });
-  if (s.attachments?.length)
-    allBlocks.push({
-      label: `Evidované přílohy (${s.attachments.length})`,
-      value: s.attachments.map((a, index) => `Příloha ${index + 1}: ${a.fileName} · SHA-256 ${a.checksum.slice(0, 12)}`).join("\n"),
-    });
+  const attachmentBlock = s.attachments?.length
+    ? {
+        label: `Evidované přílohy (${s.attachments.length})`,
+        value: s.attachments
+          .map(
+            (a, index) =>
+              `Příloha ${index + 1}: ${a.fileName} · SHA-256 ${a.checksum.slice(0, 12)}`,
+          )
+          .join("\n"),
+      }
+    : null;
+  if (attachmentBlock) allBlocks.push(attachmentBlock);
   const measure = (block: { label: string; value: string }, size = 8) =>
     13 + wrapPdfText(block.value, regular, size, WIDTH - 12).length * 10 + 5;
   const main: typeof allBlocks = [],
@@ -200,7 +207,8 @@ export async function renderOperationalPdf(input: {
   let used = 0;
   for (const block of allBlocks) {
     const height = measure(block);
-    if (used + height <= 420 && annex.length === 0) {
+    if (block === attachmentBlock) annex.push(block);
+    else if (used + height <= 420 && annex.length === 0) {
       main.push(block);
       used += height;
     } else annex.push(block);
@@ -234,17 +242,15 @@ export async function renderOperationalPdf(input: {
       10,
       WIDTH,
     );
-    titleLines
-      .slice(0, 2)
-      .forEach((line, index) =>
-        page.drawText(line, {
-          x: M,
-          y: H - 57 - index * 11,
-          size: 10,
-          font: bold,
-          color: rgb(1, 1, 1),
-        }),
-      );
+    titleLines.slice(0, 2).forEach((line, index) =>
+      page.drawText(line, {
+        x: M,
+        y: H - 57 - index * 11,
+        size: 10,
+        font: bold,
+        color: rgb(1, 1, 1),
+      }),
+    );
     page.drawText(number, {
       x: M,
       y: H - 83,
@@ -433,6 +439,17 @@ export async function renderOperationalPdf(input: {
   pdf.setTitle(`${s.title} ${number}${input.appendix ? " – Příloha A" : ""}`);
   return {
     bytes: await pdf.save(),
-    hasAppendix: annex.length > 0 || photoCount > 0,
+    hasAppendix:
+      annex.length > 0 || photoCount > 0 || Boolean(s.attachments?.length),
   };
+}
+
+export async function mergePdfDocuments(documents: Uint8Array[]) {
+  const merged = await PDFDocument.create();
+  for (const bytes of documents) {
+    const source = await PDFDocument.load(bytes);
+    const pages = await merged.copyPages(source, source.getPageIndices());
+    pages.forEach((page) => merged.addPage(page));
+  }
+  return merged.save();
 }

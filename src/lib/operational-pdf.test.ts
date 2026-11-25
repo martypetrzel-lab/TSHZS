@@ -5,6 +5,7 @@ import fontkit from "@pdf-lib/fontkit";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import {
+  mergePdfDocuments,
   operationalPdfFilename,
   renderOperationalPdf,
   wrapPdfText,
@@ -145,7 +146,23 @@ describe("jednostránkové provozní PDF", () => {
     const main = await renderOperationalPdf({ snapshot, ...fonts });
     expect(main.hasAppendix).toBe(true);
     expect((await PDFDocument.load(main.bytes)).getPageCount()).toBe(1);
-    const png = await sharp({ create: { width: 640, height: 480, channels: 3, background: { r: 42, g: 95, b: 140 } } }).composite([{ input: Buffer.from('<svg width="640" height="480"><rect x="30" y="30" width="580" height="420" fill="none" stroke="white" stroke-width="4"/><text x="80" y="230" font-size="34" fill="white">FOTOGRAFIE – TEST QA</text><text x="115" y="285" font-size="22" fill="white">Fiktivni testovaci obrazec</text></svg>') }]).png().toBuffer();
+    const png = await sharp({
+      create: {
+        width: 640,
+        height: 480,
+        channels: 3,
+        background: { r: 42, g: 95, b: 140 },
+      },
+    })
+      .composite([
+        {
+          input: Buffer.from(
+            '<svg width="640" height="480"><rect x="30" y="30" width="580" height="420" fill="none" stroke="white" stroke-width="4"/><text x="80" y="230" font-size="34" fill="white">FOTOGRAFIE – TEST QA</text><text x="115" y="285" font-size="22" fill="white">Fiktivni testovaci obrazec</text></svg>',
+          ),
+        },
+      ])
+      .png()
+      .toBuffer();
     const annex = await renderOperationalPdf({
       snapshot,
       ...fonts,
@@ -161,6 +178,22 @@ describe("jednostránkové provozní PDF", () => {
     expect(
       (await PDFDocument.load(annex.bytes)).getPageCount(),
     ).toBeGreaterThanOrEqual(1);
-    if (process.env.PDF_QA === "1") await writeFile("tmp/pdfs/HANDOVER-photo-annex.pdf", annex.bytes);
+    if (process.env.PDF_QA === "1")
+      await writeFile("tmp/pdfs/HANDOVER-photo-annex.pdf", annex.bytes);
+  });
+  it("sloučí hlavní protokol, fotografickou přílohu a nahrané PDF do jednoho souboru", async () => {
+    const main = await PDFDocument.create();
+    main.addPage();
+    const annex = await PDFDocument.create();
+    annex.addPage();
+    const uploaded = await PDFDocument.create();
+    uploaded.addPage();
+    uploaded.addPage();
+    const complete = await mergePdfDocuments([
+      await main.save(),
+      await annex.save(),
+      await uploaded.save(),
+    ]);
+    expect((await PDFDocument.load(complete)).getPageCount()).toBe(4);
   });
 });

@@ -68,15 +68,18 @@ export function OperationalDocumentActions({
               : "Otevřít protokol k tisku"}
           </a>
           <a className="button secondary" href={url}>
-            Stáhnout PDF
+            Stáhnout kompletní PDF
           </a>
+          {doc.status !== "DRAFT" && (
+            <a href={`${url}?original=1`}>Původní vystavené PDF</a>
+          )}
           {doc.hasAppendix && (
             <a
               href={`${url}?priloha=A&zobrazeni=tisk`}
               target="_blank"
               rel="noopener noreferrer"
             >
-              Tisk přílohy A
+              Samostatně vytisknout přílohu A
             </a>
           )}
           {doc.hasDecisions && (

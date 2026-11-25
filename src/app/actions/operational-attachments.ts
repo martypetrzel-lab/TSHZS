@@ -5,6 +5,7 @@ import { authorizeAttachmentOwner } from "@/lib/operational-attachments";
 import { attachmentKinds } from "@/lib/operational-fields";
 import { getStorage } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
+import { PDFDocument } from "pdf-lib";
 import sharp from "sharp";
 
 export async function uploadOperationalAttachment(form: FormData) {
@@ -21,8 +22,13 @@ export async function uploadOperationalAttachment(form: FormData) {
   )
     throw new Error("Přílohu nelze přiřadit k tomuto záznamu.");
   if (root === "OperationalProtocol") {
-    const doc = await prisma.operationalProtocol.findFirst({ where: { id: ownerId, organizationId: user.organizationId } });
-    if (doc?.status === "DRAFT" && doc.createdById !== user.id) throw new Error("Přílohy rozpracovaného dokumentu může měnit pouze jeho autor.");
+    const doc = await prisma.operationalProtocol.findFirst({
+      where: { id: ownerId, organizationId: user.organizationId },
+    });
+    if (doc?.status === "DRAFT" && doc.createdById !== user.id)
+      throw new Error(
+        "Přílohy rozpracovaného dokumentu může měnit pouze jeho autor.",
+      );
   }
   const selected = form.get("file"),
     camera = form.get("fileCamera");
@@ -53,6 +59,15 @@ export async function uploadOperationalAttachment(form: FormData) {
     throw new Error(
       "Obsah souboru neodpovídá podporovanému typu PDF/JPEG/PNG/WebP.",
     );
+  if (detected === "application/pdf") {
+    try {
+      await PDFDocument.load(bytes);
+    } catch {
+      throw new Error(
+        "PDF příloha je poškozená, zašifrovaná nebo ji nelze bezpečně připojit k protokolu.",
+      );
+    }
+  }
   if (detected.startsWith("image/")) {
     try {
       await sharp(bytes, { limitInputPixels: 25000000 }).metadata();

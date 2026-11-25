@@ -40,6 +40,11 @@ export async function OperationalAttachments({
   return (
     <section className="card">
       <h2>Přílohy a navazující dokumentace</h2>
+      <p>
+        Fotografie a nahrané PDF se připojí do kompletního PDF protokolu.
+        Soubory přidané po vystavení jsou označené jako dodatečná dokumentace;
+        původní vystavená verze zůstává beze změny.
+      </p>
       {files.map((file) => (
         <p key={file.id}>
           <a href={`/api/prilohy/${file.id}`}>{file.fileName}</a> ·{" "}

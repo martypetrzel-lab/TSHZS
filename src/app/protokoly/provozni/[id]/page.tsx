@@ -403,11 +403,6 @@ export default async function Page({
         ownerId={id}
         canUpload={permissions.has("protocol:edit_draft")}
       />
-      {doc.status !== "DRAFT" && permissions.has("protocol:download") && (
-        <a href={`/api/protokoly/${id}/pdf?navazujici=1`}>
-          Stáhnout navazující fotodokumentaci
-        </a>
-      )}
       <section className="card">
         <h2>Historie dokumentu</h2>
         {audit.map((entry) => (
