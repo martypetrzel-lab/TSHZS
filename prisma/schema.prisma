@@ -209,6 +209,7 @@ model User {
   operatingLogs       EquipmentOperatingLog[]
   assignedEquipment   EquipmentItem[]         @relation("EquipmentAssignment")
   equipmentLogEntries EquipmentLogEntry[]
+  directPermissions   UserPermission[]
 }
 
 model Session {
@@ -235,6 +236,197 @@ model Permission {
   code  String           @unique
   name  String
   roles RolePermission[]
+  users UserPermission[]
+}
+
+model UserPermission {
+  userId String
+  permissionId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@id([userId, permissionId])
+}
+
+enum OperationalProtocolType {
+  HANDOVER
+  OUT_OF_SERVICE
+  REPAIR_PROPOSAL
+}
+
+enum OperationalProtocolStatus {
+  DRAFT
+  ISSUED
+  CANCELLED
+}
+
+enum RepairWorkflowState {
+  DETECTED
+  PROPOSAL_REQUIRED
+  PENDING_APPROVAL
+  CHANGES_REQUIRED
+  APPROVED
+  ORDERED
+  HANDED_OVER
+  IN_REPAIR
+  WAITING_PARTS
+  REPAIR_COMPLETED
+  AWAITING_COLLECTION
+  AWAITING_INSPECTION
+  CLOSED
+  REJECTED
+  CANCELLED
+}
+
+model OperationalProtocol {
+  id String @id @default(cuid())
+  organizationId String
+  number String? @unique
+  type OperationalProtocolType
+  status OperationalProtocolStatus @default(DRAFT)
+  title String
+  protocolDate DateTime
+  eventPlannedAt DateTime?
+  eventOccurredAt DateTime?
+  createdAt DateTime @default(now())
+  createdById String
+  updatedAt DateTime @updatedAt
+  issuedAt DateTime?
+  issuedById String?
+  cancelledAt DateTime?
+  cancelledById String?
+  cancellationReason String?
+  templateVersion Int @default(1)
+  version Int @default(1)
+  relatedProtocolId String?
+  relatedInspectionId String?
+  repairCaseId String?
+  supplierId String?
+  draftData Json
+  snapshot Json?
+  lockVersion Int @default(0)
+  items OperationalProtocolItem[]
+  decisions RepairDecision[]
+  repairCase RepairCase? @relation(fields: [repairCaseId], references: [id])
+  supplier ServiceSupplier? @relation(fields: [supplierId], references: [id])
+  @@index([organizationId, type, status, protocolDate])
+}
+
+model OperationalProtocolItem {
+  id String @id @default(cuid())
+  protocolId String
+  equipmentId String
+  quantity Int @default(1)
+  details Json
+  snapshot Json?
+  protocol OperationalProtocol @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  handover HandoverMovement?
+  @@unique([protocolId, equipmentId])
+  @@index([equipmentId])
+}
+
+model HandoverMovement {
+  id String @id @default(cuid())
+  itemId String @unique
+  equipmentId String
+  handedOverAt DateTime
+  handedOverById String
+  expectedReturnAt DateTime?
+  returnedAt DateTime?
+  returnedById String?
+  returnData Json?
+  item OperationalProtocolItem @relation(fields: [itemId], references: [id])
+  @@index([equipmentId, returnedAt])
+  @@index([expectedReturnAt, returnedAt])
+}
+
+model RepairCase {
+  id String @id @default(cuid())
+  organizationId String
+  equipmentId String
+  defectId String @unique
+  state RepairWorkflowState @default(DETECTED)
+  responsibleUserId String
+  supplierId String?
+  dueAt DateTime?
+  estimatedCost Decimal? @db.Decimal(14, 2)
+  approvedLimit Decimal? @db.Decimal(14, 2)
+  actualCost Decimal? @db.Decimal(14, 2)
+  laborCost Decimal? @db.Decimal(14, 2)
+  partsCost Decimal? @db.Decimal(14, 2)
+  transportCost Decimal? @db.Decimal(14, 2)
+  otherCost Decimal? @db.Decimal(14, 2)
+  vatRate Decimal? @db.Decimal(5, 2)
+  currency String @default("CZK")
+  orderNumber String?
+  invoiceNumber String?
+  invoiceDate DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  completedAt DateTime?
+  lockVersion Int @default(0)
+  protocols OperationalProtocol[]
+  decisions RepairDecision[]
+  events RepairEvent[]
+  supplier ServiceSupplier? @relation(fields: [supplierId], references: [id])
+  @@index([organizationId, state, dueAt])
+  @@index([equipmentId])
+}
+
+model RepairDecision {
+  id String @id @default(cuid())
+  repairCaseId String
+  protocolId String @unique
+  decision String
+  decidedById String
+  decidedAt DateTime @default(now())
+  approvedLimit Decimal? @db.Decimal(14, 2)
+  reason String
+  conditions String?
+  repairCase RepairCase @relation(fields: [repairCaseId], references: [id])
+  protocol OperationalProtocol @relation(fields: [protocolId], references: [id])
+}
+
+model RepairEvent {
+  id String @id @default(cuid())
+  repairCaseId String
+  previousState RepairWorkflowState?
+  newState RepairWorkflowState
+  userId String
+  createdAt DateTime @default(now())
+  note String?
+  data Json?
+  repairCase RepairCase @relation(fields: [repairCaseId], references: [id])
+  @@index([repairCaseId, createdAt])
+}
+
+model ServiceSupplier {
+  id String @id @default(cuid())
+  organizationId String
+  name String
+  companyId String?
+  taxId String?
+  address String?
+  contactName String?
+  phone String?
+  email String?
+  specialization String?
+  note String?
+  archivedAt DateTime?
+  protocols OperationalProtocol[]
+  repairs RepairCase[]
+  @@index([organizationId, name])
+}
+
+model OperationalNotification {
+  id String @id @default(cuid())
+  userId String
+  deduplicationKey String @unique
+  type String
+  title String
+  href String
+  createdAt DateTime @default(now())
+  readAt DateTime?
+  @@index([userId, readAt, createdAt])
 }
 
 model UserRole {

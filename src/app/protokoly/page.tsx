@@ -1,8 +1,14 @@
 import Link from "next/link";
 import { ModulePage } from "@/components/module-page";
 import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/auth";
+import { protocolTypes } from "@/lib/operational-workflow";
+import { operationalPermissions } from "@/lib/operational-authorization";
 export const dynamic = "force-dynamic";
 export default async function Page() {
+  const user = await requireUser();
+  const permissions = await operationalPermissions(user.id);
+  const operational = permissions.has("protocol:read") ? await prisma.operationalProtocol.findMany({ where: { organizationId: user.organizationId, status: { not: "CANCELLED" } }, orderBy: { protocolDate: "desc" }, take: 100 }) : [];
   const protocols = await prisma.protocol.findMany({
     include: { equipment: true, inspection: true },
     orderBy: { createdAt: "desc" },
@@ -10,6 +16,8 @@ export default async function Page() {
   });
   return (
     <ModulePage eyebrow="Dokumentace" title="Protokoly">
+      <div className="row-actions"><Link className="button" href="/protokoly/novy">+ Nový protokol</Link>{user.roles.some(r => r.role.code === "ADMIN") && <Link href="/administrace/opravneni">Správa provozních oprávnění</Link>}</div>
+      {operational.length > 0 && <section className="card table-wrap"><h2>Provozní protokoly</h2><table className="table"><thead><tr><th>Datum</th><th>Číslo</th><th>Druh</th><th>Stav</th><th>Akce</th></tr></thead><tbody>{operational.map(p => <tr key={p.id}><td>{p.protocolDate.toLocaleDateString("cs-CZ")}</td><td>{p.number ?? "Dosud nepřiděleno"}</td><td>{protocolTypes[p.type]}</td><td>{p.status === "DRAFT" ? "Rozpracováno" : "Vystaveno"}</td><td><Link href={`/protokoly/provozni/${p.id}`}>Detail</Link></td></tr>)}</tbody></table></section>}
       {protocols.length ? (
         <div className="card table-wrap">
           <table className="table">

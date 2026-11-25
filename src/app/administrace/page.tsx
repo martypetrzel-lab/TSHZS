@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { ModulePage } from "@/components/module-page";
 const tiles = [
+  ["Provozní a finanční oprávnění", "/administrace/opravneni", ShieldCheck],
   ["Import dat", "/administrace/import", DatabaseBackup],
   ["Uživatelé a oprávnění", "/administrace/uzivatele", Users],
   ["Umístění a vozidla", "/administrace/umisteni", MapPinned],
