@@ -1,6 +1,7 @@
 import { ModulePage } from "@/components/module-page";
 import { OperationalEditorLoader } from "@/components/operational-editor-loader";
-import { requireOperationalPermission } from "@/lib/operational-authorization";
+import { operationalPageAccess } from "@/lib/operational-authorization";
+import { OperationalAccessDenied } from "@/components/operational-access-denied";
 import { prisma } from "@/lib/prisma";
 import { todayDateKey } from "@/lib/inspection-lifecycle";
 import { protocolTypes } from "@/lib/operational-workflow";
@@ -10,8 +11,16 @@ export default async function Page({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const user = await requireOperationalPermission("protocol:create"),
-    q = await searchParams;
+  const { user, allowed } = await operationalPageAccess("protocol:create");
+  if (!allowed)
+    return (
+      <OperationalAccessDenied
+        title="Nový provozní protokol"
+        permission="protocol:create"
+        user={user}
+      />
+    );
+  const q = await searchParams;
   const initial: Record<string, string> = {
     sender: user.displayName,
     senderOrganization: "HZS ČEPRO – Mstětice",

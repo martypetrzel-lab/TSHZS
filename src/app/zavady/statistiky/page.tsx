@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ModulePage } from "@/components/module-page";
-import { requireOperationalPermission } from "@/lib/operational-authorization";
+import { operationalPageAccess } from "@/lib/operational-authorization";
+import { OperationalAccessDenied } from "@/components/operational-access-denied";
 import { repairStatistics } from "@/lib/repair-statistics";
 import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
@@ -9,8 +10,16 @@ export default async function Page({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const user = await requireOperationalPermission("repair:costs_read"),
-    q = await searchParams;
+  const { user, allowed } = await operationalPageAccess("repair:costs_read");
+  if (!allowed)
+    return (
+      <OperationalAccessDenied
+        title="Statistiky oprav"
+        permission="repair:costs_read"
+        user={user}
+      />
+    );
+  const q = await searchParams;
   const stats = await repairStatistics(user.organizationId, q);
   const [vehicles, categories, suppliers] = await Promise.all([
     prisma.vehicle.findMany({

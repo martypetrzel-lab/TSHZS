@@ -1,7 +1,8 @@
 import { ModulePage } from "@/components/module-page";
 import { OperationalActionForm as Form } from "@/components/operational-action-form";
 import { saveSupplier } from "@/app/actions/repair-management";
-import { requireOperationalPermission } from "@/lib/operational-authorization";
+import { operationalPageAccess } from "@/lib/operational-authorization";
+import { OperationalAccessDenied } from "@/components/operational-access-denied";
 import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 const fields = {
@@ -16,7 +17,15 @@ const fields = {
   note: "Poznámka",
 };
 export default async function Page() {
-  const user = await requireOperationalPermission("supplier:manage");
+  const { user, allowed } = await operationalPageAccess("supplier:manage");
+  if (!allowed)
+    return (
+      <OperationalAccessDenied
+        title="Servisní organizace"
+        permission="supplier:manage"
+        user={user}
+      />
+    );
   const suppliers = await prisma.serviceSupplier.findMany({
     where: { organizationId: user.organizationId },
     orderBy: { name: "asc" },

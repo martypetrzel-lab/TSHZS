@@ -4,10 +4,11 @@ import { notFound } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
 import { OperationalActionForm as ActionForm } from "@/components/operational-action-form";
 import {
-  requireOperationalPermission,
+  operationalPageAccess,
   operationalPermissions,
 } from "@/lib/operational-authorization";
 import { todayDateKey } from "@/lib/inspection-lifecycle";
+import { OperationalAccessDenied } from "@/components/operational-access-denied";
 import { prisma } from "@/lib/prisma";
 import {
   issueOperationalProtocol,
@@ -55,7 +56,15 @@ export default async function Page({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = await requireOperationalPermission("protocol:read");
+  const { user, allowed } = await operationalPageAccess("protocol:read");
+  if (!allowed)
+    return (
+      <OperationalAccessDenied
+        title="Provozní protokol"
+        permission="protocol:read"
+        user={user}
+      />
+    );
   const permissions = await operationalPermissions(user.id);
   const { id } = await params;
   const doc = await prisma.operationalProtocol.findFirst({
@@ -70,8 +79,18 @@ export default async function Page({
     },
   });
   const data = doc.draftData as Record<string, string>;
-  const frozenEquipment = (doc.snapshot as { equipment?: { id?: string; name: string; uid: string }[] } | null)?.equipment;
-  const displayEquipment = doc.status !== "DRAFT" && frozenEquipment ? frozenEquipment.map((item, index) => ({ ...item, id: item.id ?? doc.items[index]?.equipmentId ?? item.uid })) : equipment;
+  const frozenEquipment = (
+    doc.snapshot as {
+      equipment?: { id?: string; name: string; uid: string }[];
+    } | null
+  )?.equipment;
+  const displayEquipment =
+    doc.status !== "DRAFT" && frozenEquipment
+      ? frozenEquipment.map((item, index) => ({
+          ...item,
+          id: item.id ?? doc.items[index]?.equipmentId ?? item.uid,
+        }))
+      : equipment;
   const audit = await prisma.auditLog.findMany({
     where: { entityType: "OperationalProtocol", entityId: id },
     orderBy: { createdAt: "asc" },
