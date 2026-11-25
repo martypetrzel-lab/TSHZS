@@ -79,6 +79,18 @@ export default async function Page({
       title={inspection.protocol?.number ?? "Detail kontroly"}
     >
       <div className="protocol-actions">
+        <Link
+          className="button secondary"
+          href={`/protokoly/novy?type=OUT_OF_SERVICE&inspectionId=${inspection.id}`}
+        >
+          Protokol mimo provoz
+        </Link>
+        <Link
+          className="button secondary"
+          href={`/protokoly/novy?type=REPAIR_PROPOSAL&inspectionId=${inspection.id}`}
+        >
+          Návrh na opravu
+        </Link>
         <Link className="button secondary" href="/kontroly?tab=historie">
           Zpět do historie
         </Link>
@@ -106,11 +118,20 @@ export default async function Page({
           </div>
           <div>
             <dt>Kontrola provedena</dt>
-            <dd>{(inspection.performedAt ?? inspection.completedAt)?.toLocaleDateString("cs-CZ") ?? "—"}</dd>
+            <dd>
+              {(
+                inspection.performedAt ?? inspection.completedAt
+              )?.toLocaleDateString("cs-CZ") ?? "—"}
+            </dd>
           </div>
           <div>
             <dt>Protokol ze dne</dt>
-            <dd>{(inspection.protocol?.protocolDate ?? inspection.protocol?.createdAt)?.toLocaleDateString("cs-CZ") ?? "—"}</dd>
+            <dd>
+              {(
+                inspection.protocol?.protocolDate ??
+                inspection.protocol?.createdAt
+              )?.toLocaleDateString("cs-CZ") ?? "—"}
+            </dd>
           </div>
           <div>
             <dt>Do systému vloženo</dt>
@@ -214,7 +235,26 @@ export default async function Page({
           ))}
         </div>
       )}
-      {inspection.state === "CLOSED" && canManage && <div className="card cancel-form"><h2>Storno záznamu</h2><p>Původní obsah, číslo i PDF zůstanou dohledatelné.</p><CancelInspectionDialog inspection={{ id: inspection.id, equipment: String(e.name ?? "—"), uid: String(e.uid ?? "—"), performed: (inspection.performedAt ?? inspection.completedAt)?.toLocaleDateString("cs-CZ") ?? "—", result: resultCs[inspection.result ?? ""] ?? "—", protocol: inspection.protocol?.number ?? "—", inspector: String(i.inspector ?? "—") }} /></div>}
+      {inspection.state === "CLOSED" && canManage && (
+        <div className="card cancel-form">
+          <h2>Storno záznamu</h2>
+          <p>Původní obsah, číslo i PDF zůstanou dohledatelné.</p>
+          <CancelInspectionDialog
+            inspection={{
+              id: inspection.id,
+              equipment: String(e.name ?? "—"),
+              uid: String(e.uid ?? "—"),
+              performed:
+                (
+                  inspection.performedAt ?? inspection.completedAt
+                )?.toLocaleDateString("cs-CZ") ?? "—",
+              result: resultCs[inspection.result ?? ""] ?? "—",
+              protocol: inspection.protocol?.number ?? "—",
+              inspector: String(i.inspector ?? "—"),
+            }}
+          />
+        </div>
+      )}
       {inspection.state === "CLOSED" && inspection.requirementId && (
         <form action={startCorrection} className="card cancel-form">
           <h2>Opravná kontrola</h2>

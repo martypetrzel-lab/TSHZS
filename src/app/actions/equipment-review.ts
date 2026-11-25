@@ -1,4 +1,5 @@
 "use server";
+import { assertManualInServiceAllowed } from "@/lib/equipment-service-guard";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -102,6 +103,8 @@ export async function updateEquipmentReview(formData: FormData) {
   const reviewed = formData.get("reviewed") === "on";
   const intent = String(formData.get("intent") ?? "save");
   await prisma.$transaction(async (tx) => {
+    if (parsed.data.status === "IN_SERVICE" && item.status !== "IN_SERVICE")
+      await assertManualInServiceAllowed(tx, item.id);
     const previous = {
       name: item.name,
       legacyId: item.legacyId,
@@ -355,6 +358,8 @@ export async function bulkUpdateEquipment(formData: FormData) {
       where: { id: { in: ids }, archivedAt: null },
     });
     for (const item of items) {
+      if (status === "IN_SERVICE" && item.status !== "IN_SERVICE")
+        await assertManualInServiceAllowed(tx, item.id);
       const data = {
         ...(categoryId ? { categoryId } : {}),
         ...(target ?? {}),

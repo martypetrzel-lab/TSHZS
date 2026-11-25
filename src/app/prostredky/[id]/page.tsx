@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { EquipmentOperations } from "@/components/equipment-operations";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -110,7 +111,10 @@ export default async function EquipmentDetail({
           </div>
           <div className="page-actions">
             {actionableInspections.length > 0 && (
-              <Link className="button secondary" href={`/kontroly/naplanovat/${item.id}`}>
+              <Link
+                className="button secondary"
+                href={`/kontroly/naplanovat/${item.id}`}
+              >
                 Naplánovat kontrolu
               </Link>
             )}
@@ -571,6 +575,7 @@ export default async function EquipmentDetail({
             </details>
           ))}
         </section>
+        <EquipmentOperations equipmentId={item.id} />
         <section className="card equipment-records" id="kontroly">
           <div className="panel-head">
             <h2>Kontroly</h2>

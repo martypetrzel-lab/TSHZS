@@ -9,6 +9,7 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { OperationalOverview } from "@/components/operational-overview";
 export const dynamic = "force-dynamic";
 export default async function Dashboard() {
   const user = await requireUser();
@@ -62,6 +63,7 @@ export default async function Dashboard() {
             <small className="muted">servisní případy</small>
           </div>
         </section>
+        <OperationalOverview />
         <section className="dashboard-grid">
           <div className="card">
             <div className="panel-head">

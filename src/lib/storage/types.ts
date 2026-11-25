@@ -12,7 +12,11 @@ export type StoreInput = {
 };
 
 export interface StorageProvider {
+  get(storageKey: string): Promise<Uint8Array>;
   put(input: StoreInput): Promise<StoredFile>;
-  getDownloadUrl(storageKey: string, expiresInSeconds?: number): Promise<string>;
+  getDownloadUrl(
+    storageKey: string,
+    expiresInSeconds?: number,
+  ): Promise<string>;
   delete(storageKey: string): Promise<void>;
 }

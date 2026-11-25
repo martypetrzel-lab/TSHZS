@@ -9,9 +9,12 @@ import {
   Settings,
   ScrollText,
   ScanSearch,
+  Wrench,
 } from "lucide-react";
 import { ModulePage } from "@/components/module-page";
 const tiles = [
+  ["Provozní nastavení", "/administrace/provozni-nastaveni", Settings],
+  ["Servisní organizace", "/dodavatele", Wrench],
   ["Provozní a finanční oprávnění", "/administrace/opravneni", ShieldCheck],
   ["Import dat", "/administrace/import", DatabaseBackup],
   ["Uživatelé a oprávnění", "/administrace/uzivatele", Users],

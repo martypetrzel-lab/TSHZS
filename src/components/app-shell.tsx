@@ -14,6 +14,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
+import { NotificationBell } from "@/components/notification-bell";
 
 const nav = [
   ["Dashboard", "/", LayoutDashboard],
@@ -77,6 +78,7 @@ export function AppShell({
             placeholder="Hledat UID, prostředek, výrobní číslo…"
           />
           <div className="user">
+            <NotificationBell />
             <strong>{userName}</strong>
             <span>Stanice Mstětice</span>
             <form action={logout}>
