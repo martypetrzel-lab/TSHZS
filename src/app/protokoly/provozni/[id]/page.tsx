@@ -236,17 +236,22 @@ export default async function Page({
                 },
               ]),
             )}
+            canIssue={permissions.has("protocol:issue")}
           />
         )}
-      {doc.status === "DRAFT" && permissions.has("protocol:issue") && (
-        <ActionForm
-          action={issueOperationalProtocol}
-          confirmation="Vystavit neměnný dokument a přidělit mu číslo?"
-        >
-          {hidden}
-          <button className="button">Vystavit protokol</button>
-        </ActionForm>
-      )}
+      {doc.status === "DRAFT" &&
+        permissions.has("protocol:issue") &&
+        !(
+          doc.createdById === user.id && permissions.has("protocol:edit_draft")
+        ) && (
+          <ActionForm
+            action={issueOperationalProtocol}
+            confirmation="Vystavit neměnný dokument a přidělit mu číslo?"
+          >
+            {hidden}
+            <button className="button">Vystavit protokol</button>
+          </ActionForm>
+        )}
       {doc.status === "ISSUED" &&
         doc.type !== "REPAIR_PROPOSAL" &&
         !confirmed &&

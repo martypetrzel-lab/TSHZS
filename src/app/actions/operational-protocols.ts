@@ -284,6 +284,11 @@ export async function saveOperationalDraft(form: FormData) {
   }, transactionOptions);
   revalidatePath("/protokoly");
   revalidatePath("/zavady");
+  if (value(form, "submitMode") === "issue") {
+    const issueForm = new FormData();
+    issueForm.set("id", document.id);
+    await issueOperationalProtocol(issueForm);
+  }
   redirect(`/protokoly/provozni/${document.id}`);
 }
 

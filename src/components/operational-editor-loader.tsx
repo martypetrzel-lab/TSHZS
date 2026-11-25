@@ -11,6 +11,7 @@ export async function OperationalEditorLoader({
   date: string;
   selectedIds: string[];
   itemDetails?: Record<string, Record<string, string>>;
+  canIssue?: boolean;
 }) {
   const [equipment, users, suppliers, vehicles, locations, movements] =
     await Promise.all([

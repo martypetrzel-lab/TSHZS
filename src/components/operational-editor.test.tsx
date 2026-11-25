@@ -47,6 +47,7 @@ function render(type: string, existing = false) {
       itemDetails={{
         item: { description: "Původní upřesnění", quantity: "1" },
       }}
+      canIssue={existing}
     />,
   );
 }
@@ -126,6 +127,16 @@ describe("samostatné formuláře provozních protokolů", () => {
       "accessories-item",
     ])
       expect(names).not.toContain(key);
+  });
+  it("u rozpracovaného návrhu uloží vyplněná pole a vystaví jej jedním tlačítkem", () => {
+    const html = render("REPAIR_PROPOSAL", true);
+    for (const key of ["reason", "description", "solution", "justification"])
+      expect(html).toMatch(
+        new RegExp(`name="${key}"[^>]*required|required=""[^>]*name="${key}"`),
+      );
+    expect(html).toMatch(/name="submitMode"[^>]*value="save"|value="save"[^>]*name="submitMode"/);
+    expect(html).toMatch(/name="submitMode"[^>]*value="issue"|value="issue"[^>]*name="submitMode"/);
+    expect(html).toContain("Uložit změny a vystavit protokol");
   });
   it.each(["HANDOVER", "OUT_OF_SERVICE", "REPAIR_PROPOSAL"])(
     "druh %s je pevný a nelze jej změnit přepínačem",

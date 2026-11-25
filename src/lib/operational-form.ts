@@ -6,6 +6,7 @@ export const operationalForms: Record<
     description: string;
     sections: Section[];
     itemFields: string[];
+    requiredFields: string[];
     labels: Record<string, string>;
   }
 > = {
@@ -47,6 +48,13 @@ export const operationalForms: Record<
       { title: "Doplňující údaje", fields: ["responsibleUserId", "note"] },
     ],
     itemFields: ["condition", "accessories", "note"],
+    requiredFields: [
+      "reason",
+      "handoverPurpose",
+      "place",
+      "sender",
+      "recipient",
+    ],
     labels: {
       reason: "Důvod předání",
       eventPlannedAt: "Plánované datum předání",
@@ -77,6 +85,7 @@ export const operationalForms: Record<
       },
     ],
     itemFields: [],
+    requiredFields: ["reason", "description"],
     labels: {
       reason: "Důvod odstavení",
       description: "Popis závady a technického stavu",
@@ -125,6 +134,7 @@ export const operationalForms: Record<
       },
     ],
     itemFields: [],
+    requiredFields: ["reason", "description", "solution", "justification"],
     labels: {
       reason: "Důvod návrhu opravy",
       description: "Popis závady",

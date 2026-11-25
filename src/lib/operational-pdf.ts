@@ -422,7 +422,7 @@ export async function renderOperationalPdf(input: {
       font: regular,
       color: gray,
     });
-    if (s.stampEnabled !== false && !input.draft) stamp(page, bold);
+    if (s.stampEnabled !== false) stamp(page, bold);
   }
   headerFooter();
   const pages = pdf.getPages();
@@ -441,6 +441,7 @@ export async function renderOperationalPdf(input: {
     bytes: await pdf.save(),
     hasAppendix:
       annex.length > 0 || photoCount > 0 || Boolean(s.attachments?.length),
+    hasStamp: s.stampEnabled !== false,
   };
 }
 

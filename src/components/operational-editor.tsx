@@ -39,6 +39,7 @@ export function OperationalEditor({
   date,
   selectedIds,
   itemDetails = {},
+  canIssue = false,
 }: {
   equipment: Equipment[];
   users: Option[];
@@ -56,6 +57,7 @@ export function OperationalEditor({
   date: string;
   selectedIds: string[];
   itemDetails?: Record<string, Record<string, string>>;
+  canIssue?: boolean;
 }) {
   const type = (
     Object.hasOwn(protocolTypes, initialType) ? initialType : "HANDOVER"
@@ -123,6 +125,7 @@ export function OperationalEditor({
     return (
       <label className="field" key={key}>
         {label}
+        {definition.requiredFields.includes(key) ? " *" : ""}
         {selectOptions ? (
           <select
             name={key}
@@ -144,6 +147,7 @@ export function OperationalEditor({
                   }
                 : undefined
             }
+            required={definition.requiredFields.includes(key)}
           >
             {!["handoverPurpose", "severity"].includes(key) && (
               <option value="">{placeholder}</option>
@@ -168,6 +172,7 @@ export function OperationalEditor({
             onChange={(event) =>
               setRecipient({ ...recipient, [key]: event.target.value })
             }
+            required={definition.requiredFields.includes(key)}
           />
         ) : [
             "reason",
@@ -180,7 +185,7 @@ export function OperationalEditor({
           <textarea
             name={key}
             defaultValue={defaultValue}
-            required={key === "reason"}
+            required={definition.requiredFields.includes(key)}
           />
         ) : (
           <input
@@ -201,6 +206,7 @@ export function OperationalEditor({
             }
             step={key === "estimatedCost" ? "0.01" : undefined}
             min={key === "estimatedCost" ? "0" : undefined}
+            required={definition.requiredFields.includes(key)}
           />
         )}
       </label>
@@ -350,9 +356,32 @@ export function OperationalEditor({
             />
           ))}
         <div className="inspection-sticky">
-          <button className="button" disabled={!selected.length}>
+          <button
+            className="button secondary"
+            name="submitMode"
+            value="save"
+            disabled={!selected.length}
+          >
             Uložit: {protocolTypes[type]}
           </button>
+          {docId && canIssue && (
+            <button
+              className="button"
+              name="submitMode"
+              value="issue"
+              disabled={!selected.length}
+              onClick={(event) => {
+                if (
+                  !window.confirm(
+                    "Uložit všechny změny, vystavit neměnný dokument a přidělit mu číslo?",
+                  )
+                )
+                  event.preventDefault();
+              }}
+            >
+              Uložit změny a vystavit protokol
+            </button>
+          )}
         </div>
       </div>
     </OperationalActionForm>

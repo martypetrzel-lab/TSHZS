@@ -127,7 +127,18 @@ describe("jednostránkové provozní PDF", () => {
         ...flag,
       });
       expect((await PDFDocument.load(result.bytes)).getPageCount()).toBe(1);
+      expect(result.hasStamp).toBe(true);
     }
+  });
+  it("grafické razítko respektuje provozní nastavení", async () => {
+    const snapshot = fixture("OUT_OF_SERVICE", false);
+    snapshot.stampEnabled = false;
+    const result = await renderOperationalPdf({
+      snapshot,
+      regularFont: await font(false),
+      boldFont: await font(true),
+    });
+    expect(result.hasStamp).toBe(false);
   });
   it("fotografie umístí do propojené přílohy a zachová jednu hlavní A4", async () => {
     const snapshot = fixture("HANDOVER", false);
