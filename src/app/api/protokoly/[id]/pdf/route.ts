@@ -144,7 +144,7 @@ export async function GET(
     return new Response(Buffer.from(result.bytes), {
       headers: {
         "content-type": "application/pdf",
-        "content-disposition": `attachment; filename="${operationalPdfFilename(snapshot, appendix).replace(/\.pdf$/, followup ? "_Navazujici-dokumentace.pdf" : endorsement ? "_Schvalovaci-dolozka.pdf" : ".pdf")}"`,
+        "content-disposition": `${new URL(request.url).searchParams.get("zobrazeni") === "tisk" ? "inline" : "attachment"}; filename="${operationalPdfFilename(snapshot, appendix).replace(/\.pdf$/, followup ? "_Navazujici-dokumentace.pdf" : endorsement ? "_Schvalovaci-dolozka.pdf" : ".pdf")}"`,
         "cache-control": "private, no-store",
         "x-content-type-options": "nosniff",
       },

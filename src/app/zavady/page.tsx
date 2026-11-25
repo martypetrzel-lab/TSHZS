@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { repairStates } from "@/lib/operational-workflow";
 import { operationalPermissions } from "@/lib/operational-authorization";
+import { operationalProtocolProgress } from "@/lib/operational-progress";
 export const dynamic = "force-dynamic";
 export default async function Page({
   searchParams,
@@ -13,6 +14,49 @@ export default async function Page({
   const q = await searchParams;
   const user = await requireUser();
   const permissions = await operationalPermissions(user.id);
+  const protocols = permissions.has("protocol:read")
+    ? await prisma.operationalProtocol.findMany({
+        where: {
+          organizationId: user.organizationId,
+          type: { in: ["OUT_OF_SERVICE", "REPAIR_PROPOSAL"] },
+          status: { in: ["DRAFT", "ISSUED"] },
+        },
+        select: {
+          id: true,
+          title: true,
+          number: true,
+          type: true,
+          status: true,
+          protocolDate: true,
+          items: { select: { equipmentId: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      })
+    : [];
+  const protocolEquipment = protocols.length
+    ? await prisma.equipmentItem.findMany({
+        where: {
+          organizationId: user.organizationId,
+          id: {
+            in: protocols.flatMap((p) =>
+              p.items.map((item) => item.equipmentId),
+            ),
+          },
+        },
+        select: { id: true, name: true, uid: true },
+      })
+    : [];
+  const protocolEvents = protocols.length
+    ? await prisma.auditLog.findMany({
+        where: {
+          entityType: "OperationalProtocol",
+          entityId: { in: protocols.map((p) => p.id) },
+          action: { in: ["EQUIPMENT_OUT_OF_SERVICE", "REPAIR_SUBMITTED"] },
+        },
+        select: { entityId: true, action: true },
+      })
+    : [];
   const defects = await prisma.defect.findMany({
     where: {
       equipment: {
@@ -60,6 +104,50 @@ export default async function Page({
           Nový návrh / protokol
         </Link>
       </div>
+      {permissions.has("protocol:read") && (
+        <section className="card">
+          <h2>Protokoly mimo provoz a návrhy oprav</h2>
+          <p>
+            Vystavený dokument zde najdete i před potvrzením skutečné události.
+            Závada vzniká při potvrzení odstavení, servisní případ při odeslání
+            návrhu ke schválení.
+          </p>
+          {protocols.map((protocol) => (
+            <div key={protocol.id} className="history-row">
+              <Link href={`/protokoly/provozni/${protocol.id}`}>
+                {protocol.number ?? "Rozpracovaný dokument"} · {protocol.title}
+              </Link>
+              <span>
+                {protocol.items
+                  .map((item) => {
+                    const equipment = protocolEquipment.find(
+                      (e) => e.id === item.equipmentId,
+                    );
+                    return equipment
+                      ? `${equipment.name} · ${equipment.uid}`
+                      : "Prostředek";
+                  })
+                  .join(", ")}
+              </span>
+              <span>
+                {operationalProtocolProgress(
+                  protocol.type,
+                  protocol.status,
+                  protocolEvents
+                    .filter((event) => event.entityId === protocol.id)
+                    .map((event) => event.action),
+                )}
+              </span>
+              <Link href={`/protokoly/provozni/${protocol.id}`}>
+                Otevřít / dokončit
+              </Link>
+            </div>
+          ))}
+          {!protocols.length && (
+            <p>Zatím nejsou žádné protokoly mimo provoz ani návrhy oprav.</p>
+          )}
+        </section>
+      )}
       <section className="card">
         <h2>Aktivní závady</h2>
         {defects.map((defect) => (

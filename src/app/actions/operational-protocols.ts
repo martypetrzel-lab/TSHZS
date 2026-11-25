@@ -86,6 +86,7 @@ export async function grantOperationalPermission(form: FormData) {
     });
   });
   revalidatePath("/administrace/opravneni");
+  revalidatePath("/", "layout");
 }
 
 export async function saveOperationalDraft(form: FormData) {
@@ -281,6 +282,8 @@ export async function saveOperationalDraft(form: FormData) {
     });
     return result;
   }, transactionOptions);
+  revalidatePath("/protokoly");
+  revalidatePath("/zavady");
   redirect(`/protokoly/provozni/${document.id}`);
 }
 
@@ -424,6 +427,7 @@ export async function cancelOperationalProtocol(form: FormData) {
       });
   });
   revalidatePath("/protokoly");
+  revalidatePath("/zavady");
   revalidatePath(`/protokoly/provozni/${id}`);
 }
 
@@ -449,6 +453,8 @@ export async function deleteOperationalDraft(form: FormData) {
         },
       });
   });
+  revalidatePath("/protokoly");
+  revalidatePath("/zavady");
   redirect("/protokoly");
 }
 
@@ -891,6 +897,8 @@ export async function confirmOperationalEvent(form: FormData) {
     });
   }, transactionOptions);
   revalidatePath(`/protokoly/provozni/${id}`);
+  revalidatePath("/protokoly");
+  revalidatePath("/zavady");
   revalidatePath("/prostredky");
 }
 

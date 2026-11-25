@@ -9,11 +9,13 @@ import {
 } from "@/lib/operational-authorization";
 import { todayDateKey } from "@/lib/inspection-lifecycle";
 import { OperationalAccessDenied } from "@/components/operational-access-denied";
+import {
+  OperationalDocumentActions,
+  MissingOperationalAccess,
+} from "@/components/operational-document-actions";
 import { prisma } from "@/lib/prisma";
 import {
   issueOperationalProtocol,
-  cancelOperationalProtocol,
-  deleteOperationalDraft,
   confirmOperationalEvent,
   submitRepairProposal,
   decideRepairProposal,
@@ -114,29 +116,58 @@ export default async function Page({
       title={`${doc.title} · ${doc.number ?? "Rozpracováno"}`}
     >
       <Link href="/protokoly">Zpět na protokoly</Link>
-      <div className="row-actions">
-        {permissions.has("protocol:download") && (
-          <>
-            <a className="button" href={`/api/protokoly/${id}/pdf`}>
-              {doc.status === "DRAFT"
-                ? "Náhled PDF – nevystaveno"
-                : `Tisk / PDF: ${doc.title}`}
-            </a>
-            {(doc.status === "DRAFT" ||
-              (doc.snapshot as { hasAppendix?: boolean } | null)
-                ?.hasAppendix) && (
-              <a href={`/api/protokoly/${id}/pdf?priloha=A`}>
-                Příloha A – pokračování dokumentu
-              </a>
+      <OperationalDocumentActions
+        doc={{
+          id,
+          status: doc.status,
+          createdById: doc.createdById,
+          title: doc.title,
+          hasAppendix: Boolean(
+            (doc.snapshot as { hasAppendix?: boolean } | null)?.hasAppendix,
+          ),
+          hasDecisions: doc.decisions.length > 0,
+        }}
+        user={user}
+        permissions={permissions}
+      />
+      {doc.status === "ISSUED" &&
+        doc.type === "OUT_OF_SERVICE" &&
+        !confirmed && (
+          <section className="card review-notice">
+            <h2>Čeká na potvrzení skutečného odstavení</h2>
+            <p>
+              Protokol je vystavený, ale skutečné odstavení zatím není
+              potvrzené. V části Závady a opravy je uveden mezi provozními
+              protokoly. Závada a stav mimo provoz se zapíší po potvrzení
+              skutečné události ve formuláři níže.
+            </p>
+            {!permissions.has("equipment:out_of_service") && (
+              <MissingOperationalAccess
+                user={user}
+                permission="equipment:out_of_service"
+                label="Potvrdit skutečné odstavení prostředku"
+              />
             )}
-            {doc.decisions.length > 0 && (
-              <a href={`/api/protokoly/${id}/pdf?dolozka=1`}>
-                PDF se schvalovací doložkou
-              </a>
-            )}
-          </>
+          </section>
         )}
-      </div>
+      {doc.status === "ISSUED" &&
+        doc.type === "REPAIR_PROPOSAL" &&
+        !submission && (
+          <section className="card review-notice">
+            <h2>Návrh ještě nebyl odeslán ke schválení</h2>
+            <p>
+              V části Závady a opravy je uveden mezi návrhy. Servisní případ
+              vznikne po odeslání ke schválení tlačítkem níže.
+            </p>
+            {!permissions.has("repair:create") && (
+              <MissingOperationalAccess
+                user={user}
+                permission="repair:create"
+                label="Vytvářet opravy a odesílat návrhy"
+              />
+            )}
+          </section>
+        )}
       {permissions.has("protocol:create") && (
         <ActionForm action={duplicateOperationalProtocol}>
           {hidden}
@@ -216,17 +247,6 @@ export default async function Page({
           <button className="button">Vystavit protokol</button>
         </ActionForm>
       )}
-      {doc.status === "DRAFT" &&
-        doc.createdById === user.id &&
-        permissions.has("protocol:edit_draft") && (
-          <ActionForm
-            action={deleteOperationalDraft}
-            confirmation="Opravdu odstranit rozpracovaný dokument?"
-          >
-            {hidden}
-            <button className="button secondary">Odstranit rozpracovaný</button>
-          </ActionForm>
-        )}
       {doc.status === "ISSUED" &&
         doc.type !== "REPAIR_PROPOSAL" &&
         !confirmed &&
@@ -334,19 +354,6 @@ export default async function Page({
           </p>
         </section>
       ))}
-      {doc.status === "ISSUED" && permissions.has("protocol:cancel") && (
-        <ActionForm
-          action={cancelOperationalProtocol}
-          confirmation="Opravdu stornovat dokument?"
-        >
-          {hidden}
-          <label className="field">
-            Důvod storna
-            <textarea name="reason" required />
-          </label>
-          <button className="button secondary">Stornovat protokol</button>
-        </ActionForm>
-      )}
       {doc.cancellationReason && (
         <p className="error">Důvod storna: {doc.cancellationReason}</p>
       )}
