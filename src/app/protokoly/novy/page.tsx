@@ -5,6 +5,9 @@ import { OperationalAccessDenied } from "@/components/operational-access-denied"
 import { prisma } from "@/lib/prisma";
 import { todayDateKey } from "@/lib/inspection-lifecycle";
 import { protocolTypes } from "@/lib/operational-workflow";
+import type { OperationalType } from "@/lib/operational-workflow";
+import { OperationalProtocolChoices } from "@/components/operational-protocol-choices";
+import Link from "next/link";
 export const dynamic = "force-dynamic";
 export default async function Page({
   searchParams,
@@ -21,6 +24,24 @@ export default async function Page({
       />
     );
   const q = await searchParams;
+  if (!q.type || !Object.hasOwn(protocolTypes, q.type)) {
+    const context = Object.fromEntries(
+      Object.entries(q).filter(
+        (entry): entry is [string, string] =>
+          Boolean(entry[1]) && entry[0] !== "type",
+      ),
+    );
+    return (
+      <ModulePage eyebrow="Dokumentace" title="Vyberte protokol">
+        <p>
+          Každý druh má vlastní formulář, číslo dokumentu a samostatné PDF pro
+          tisk.
+        </p>
+        <OperationalProtocolChoices context={context} />
+      </ModulePage>
+    );
+  }
+  const type = q.type as OperationalType;
   const initial: Record<string, string> = {
     sender: user.displayName,
     senderOrganization: "HZS ČEPRO – Mstětice",
@@ -80,13 +101,14 @@ export default async function Page({
     }
   }
   return (
-    <ModulePage eyebrow="Dokumentace" title="Nový provozní protokol">
+    <ModulePage eyebrow="Nový dokument" title={protocolTypes[type]}>
+      <p>
+        <Link href="/protokoly/novy">Vybrat jiný druh protokolu</Link>
+      </p>
       <OperationalEditorLoader
         organizationId={user.organizationId}
         initial={initial}
-        initialType={
-          q.type && Object.hasOwn(protocolTypes, q.type) ? q.type : "HANDOVER"
-        }
+        initialType={type}
         date={todayDateKey()}
         selectedIds={equipmentId ? [equipmentId] : []}
       />

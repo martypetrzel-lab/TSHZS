@@ -120,7 +120,7 @@ export default async function Page({
             <a className="button" href={`/api/protokoly/${id}/pdf`}>
               {doc.status === "DRAFT"
                 ? "Náhled PDF – nevystaveno"
-                : "PDF / tisk"}
+                : `Tisk / PDF: ${doc.title}`}
             </a>
             {(doc.status === "DRAFT" ||
               (doc.snapshot as { hasAppendix?: boolean } | null)

@@ -41,15 +41,33 @@ describe("Nový provozní protokol", () => {
       expect(mocks.query).not.toHaveBeenCalled();
     },
   );
-  it("s oprávněním zobrazí editor", async () => {
+  it.each(["HANDOVER", "OUT_OF_SERVICE", "REPAIR_PROPOSAL"])(
+    "s oprávněním zobrazí samostatný editor %s",
+    async (type) => {
+      mocks.access.mockResolvedValue({
+        allowed: true,
+        user: { id: "me", displayName: "Technik", organizationId: "org" },
+      });
+      const html = renderToStaticMarkup(
+        await Page({ searchParams: Promise.resolve({ type }) }),
+      );
+      expect(html).toContain("Editor protokolu");
+      expect(html).not.toContain("Chybí provozní oprávnění");
+    },
+  );
+  it("bez druhu nabídne tři samostatné dokumenty a zachová vybraný prostředek", async () => {
     mocks.access.mockResolvedValue({
       allowed: true,
-      user: { id: "me", displayName: "Technik", organizationId: "org" },
+      user: { id: "me", roles: [] },
     });
     const html = renderToStaticMarkup(
-      await Page({ searchParams: Promise.resolve({}) }),
+      await Page({
+        searchParams: Promise.resolve({ equipmentId: "selected-equipment" }),
+      }),
     );
-    expect(html).toContain("Editor protokolu");
-    expect(html).not.toContain("Chybí provozní oprávnění");
+    for (const type of ["HANDOVER", "OUT_OF_SERVICE", "REPAIR_PROPOSAL"])
+      expect(html).toContain(`type=${type}`);
+    expect(html).toContain("equipmentId=selected-equipment");
+    expect(html).not.toContain("Editor protokolu");
   });
 });

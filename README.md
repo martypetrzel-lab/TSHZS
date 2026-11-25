@@ -37,9 +37,12 @@ neměnné; oprava znamená nový návrh/verzi nebo storno s důvodem.
 Číselné řady TS/PP/MP/NO jsou samostatné pro každý rok data dokumentu.
 Finální číslo se přiděluje až při vystavení transakčním čítačem.
 
-`/protokoly/novy` umožňuje vybrat prostředky a doplnit položkové údaje,
-kontakty, plánované/skutečné datum a relevantní vazby. Odkazy z prostředku,
-kontroly, závady nebo servisního případu předvyplňují známá data.
+`/protokoly/novy` nabídne tři samostatné formuláře. Předání obsahuje strany,
+příslušenství a vrácení, odstavení závadu a opatření, návrh opravy rozsah,
+odůvodnění a náklady. Druh dokumentu je ve formuláři pevný. Každý dokument
+má samostatné číslo a PDF pro tisk. Odkazy z prostředku, kontroly, závady nebo
+servisního případu předvyplňují známá data. Editace staršího návrhu zachovává
+dříve uložené doplňující údaje.
 
 Předání a vrácení jsou samostatné skutečné události. Potvrzení předání mění
 stav/umístění, u více položek je možné vracet prostředky postupně. Dvojímu

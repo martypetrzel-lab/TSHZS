@@ -136,9 +136,17 @@ export default async function Page({
     <ModulePage eyebrow="Dokumentace" title="Protokoly">
       <div className="row-actions">
         {permissions.has("protocol:create") && (
-          <Link className="button" href="/protokoly/novy">
-            + Nový protokol
-          </Link>
+          <>
+            {Object.entries(protocolTypes).map(([type, title]) => (
+              <Link
+                key={type}
+                className="button"
+                href={`/protokoly/novy?type=${type}`}
+              >
+                + {title}
+              </Link>
+            ))}
+          </>
         )}
         {user.roles.some((r) => r.role.code === "ADMIN") && (
           <Link href="/administrace/opravneni">
